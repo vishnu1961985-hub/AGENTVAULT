@@ -392,5 +392,54 @@ class TestAgentVaultSimulation(unittest.TestCase):
         self.assertEqual(vault.balance, 500)
         self.assertEqual(vault.pending_payments[0]["status"], "Pending")
 
+
+    def test_clean_payments_progress_trust_tier(self):
+        vault = self.make_vault()
+        self.assertEqual(vault.trust_tier, 0)
+
+        for hour in (12, 13, 14):
+            result = vault.submit_payment(
+                caller="agent-1",
+                recipient="merchant-1",
+                amount=1,
+                now=datetime(2026, 9, 28, hour, 0),
+            )
+            self.assertEqual(result["status"], "Allowed")
+
+        self.assertEqual(vault.trust_tier, 1)
+        self.assertEqual(vault.clean_payment_count, 0)
+
+    def test_pending_payment_does_not_increase_trust(self):
+        vault = self.make_vault()
+        vault.max_per_transaction = 40
+
+        result = vault.submit_payment(
+            caller="agent-1",
+            recipient="merchant-1",
+            amount=21,
+            now=datetime(2026, 9, 28, 12, 0),
+        )
+
+        self.assertEqual(result["status"], "Pending")
+        self.assertEqual(vault.trust_tier, 0)
+        self.assertEqual(vault.clean_payment_count, 0)
+
+    def test_blocked_payment_resets_trust_and_clean_progress(self):
+        vault = self.make_vault()
+        vault.trust_tier = 1
+        vault.clean_payment_count = 2
+
+        result = vault.submit_payment(
+            caller="agent-1",
+            recipient="unknown-merchant",
+            amount=1,
+            now=datetime(2026, 9, 28, 12, 0),
+        )
+
+        self.assertEqual(result["status"], "Blocked")
+        self.assertEqual(vault.trust_tier, 0)
+        self.assertEqual(vault.clean_payment_count, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

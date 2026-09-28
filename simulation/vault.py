@@ -24,6 +24,8 @@ class Vault:
     paused: bool = False
     expires_at: Optional[datetime] = None
     trust_tier: int = 0
+    clean_payment_count: int = 0
+    clean_payments_per_tier: int = 3
 
     daily_spending: dict[date, int] = field(default_factory=dict)
     recipient_spending: dict[str, int] = field(default_factory=dict)
@@ -34,6 +36,24 @@ class Vault:
     def effective_daily_limit(self) -> int:
         configured = self.daily_limits_by_tier.get(self.trust_tier, 0)
         return min(configured, self.owner_max_daily_limit)
+
+    def record_clean_payment(self) -> None:
+        """Advance trust after enough successfully completed payments."""
+        self.clean_payment_count += 1
+
+        if self.clean_payment_count < self.clean_payments_per_tier:
+            return
+
+        available_tiers = sorted(
+            tier
+            for tier in self.daily_limits_by_tier
+            if tier > self.trust_tier
+        )
+
+        if available_tiers:
+            self.trust_tier = available_tiers[0]
+
+        self.clean_payment_count = 0
 
     def submit_payment(
         self,
@@ -64,6 +84,7 @@ class Vault:
         def block(message: str) -> dict:
             # A blocked violation resets the trust tier to zero.
             self.trust_tier = 0
+            self.clean_payment_count = 0
             return finish("Blocked", message)
 
         # 1. Authorised agent caller.
@@ -127,6 +148,7 @@ class Vault:
         self.balance -= amount
         self.daily_spending[day] = spent_today + amount
         self.recipient_spending[recipient] = spent_to_recipient + amount
+        self.record_clean_payment()
 
         return finish("Allowed", "All configured checks passed")
 
@@ -271,6 +293,7 @@ class Vault:
         self.daily_spending[payment_date] = spent_today + amount
         self.recipient_spending[recipient] = spent_to_recipient + amount
         payment["status"] = "Approved"
+        self.record_clean_payment()
 
         result = {
             "label": SIMULATION_LABEL,
