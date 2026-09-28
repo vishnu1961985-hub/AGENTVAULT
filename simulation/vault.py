@@ -152,12 +152,17 @@ class Vault:
         spent_today = self.daily_spending.get(day, 0)
         if amount > daily_limit - spent_today:
             return block("Daily spending limit exceeded")
-        # 6. Per-recipient cap.
+                # 6. Per-recipient cap.
         cap = self.recipient_caps.get(recipient)
         spent_to_recipient = self.recipient_spending.get(recipient, 0)
         if cap is not None and amount > cap - spent_to_recipient:
             return block("Per-recipient cap exceeded")
-        # 7. Approval threshold.
+
+        # 7. Sufficient simulated balance.
+        if self.balance < amount:
+            return block("Insufficient simulated balance")
+
+        # 8. Approval threshold.
         if amount > self.approval_threshold:
             payment_id = self.next_payment_id
             self.next_payment_id += 1

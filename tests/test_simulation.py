@@ -1,4 +1,3 @@
-
 import unittest
 from datetime import date, datetime
 
@@ -6,7 +5,6 @@ from simulation.vault import Vault, SIMULATION_LABEL
 
 
 class TestAgentVaultSimulation(unittest.TestCase):
-
     def make_vault(self):
         """Create a fresh vault for each test."""
         return Vault(
@@ -36,9 +34,7 @@ class TestAgentVaultSimulation(unittest.TestCase):
         self.assertEqual(result["label"], SIMULATION_LABEL)
         self.assertEqual(result["status"], "Allowed")
         self.assertEqual(vault.balance, 490)
-        self.assertEqual(
-            vault.daily_spending[date(2026, 9, 28)], 10
-        )
+        self.assertEqual(vault.daily_spending[date(2026, 9, 28)], 10)
         self.assertEqual(vault.recipient_spending["merchant-1"], 10)
         self.assertEqual(vault.pending_payments, [])
 
@@ -130,6 +126,23 @@ class TestAgentVaultSimulation(unittest.TestCase):
         self.assertIn("recipient cap", second["reason"])
         self.assertEqual(vault.balance, 485)
         self.assertEqual(vault.recipient_spending["merchant-1"], 15)
+
+    def test_insufficient_balance_blocks_submission(self):
+        vault = self.make_vault()
+        vault.max_per_transaction = 40
+        vault.balance = 10
+
+        result = vault.submit_payment(
+            caller="agent-1",
+            recipient="merchant-1",
+            amount=21,
+            now=datetime(2026, 9, 28, 12, 0),
+        )
+
+        self.assertEqual(result["status"], "Blocked")
+        self.assertIn("balance", result["reason"].lower())
+        self.assertEqual(vault.balance, 10)
+        self.assertEqual(vault.pending_payments, [])
 
     def test_large_payment_becomes_pending(self):
         vault = self.make_vault()
@@ -251,7 +264,6 @@ class TestAgentVaultSimulation(unittest.TestCase):
     def test_approval_fails_with_insufficient_balance(self):
         vault = self.make_vault()
         vault.max_per_transaction = 40
-        vault.balance = 10
 
         submitted = vault.submit_payment(
             caller="agent-1",
@@ -260,13 +272,18 @@ class TestAgentVaultSimulation(unittest.TestCase):
             now=datetime(2026, 9, 28, 12, 0),
         )
 
+        self.assertEqual(submitted["status"], "Pending")
+
+        # Simulate the balance becoming insufficient before approval.
+        vault.balance = 10
+
         result = vault.approve_payment(
             caller="owner-1",
             payment_id=submitted["payment_id"],
         )
 
         self.assertEqual(result["status"], "Blocked")
-        self.assertIn("balance", result["reason"])
+        self.assertIn("balance", result["reason"].lower())
         self.assertEqual(vault.balance, 10)
         self.assertEqual(vault.pending_payments[0]["status"], "Pending")
 
@@ -296,8 +313,6 @@ class TestAgentVaultSimulation(unittest.TestCase):
     def test_expired_vault_cannot_approve_payment(self):
         vault = self.make_vault()
         vault.max_per_transaction = 40
-
-        # Set expiry before submitting the payment.
         vault.expires_at = datetime(2026, 9, 28, 13, 0)
 
         submitted = vault.submit_payment(
@@ -309,7 +324,6 @@ class TestAgentVaultSimulation(unittest.TestCase):
 
         self.assertEqual(submitted["status"], "Pending")
 
-        # Approval is attempted after expiry.
         result = vault.approve_payment(
             caller="owner-1",
             payment_id=submitted["payment_id"],
@@ -391,7 +405,6 @@ class TestAgentVaultSimulation(unittest.TestCase):
         self.assertIn("maximum", result["reason"])
         self.assertEqual(vault.balance, 500)
         self.assertEqual(vault.pending_payments[0]["status"], "Pending")
-
 
     def test_clean_payments_progress_trust_tier(self):
         vault = self.make_vault()
