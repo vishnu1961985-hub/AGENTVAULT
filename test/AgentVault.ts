@@ -27,6 +27,7 @@ describe("AgentVault", function () {
       await ethers.getContractFactory("AgentVault");
 
     const vault = await AgentVault.deploy(
+      owner.address,
       agent.address,
       expiry
     );

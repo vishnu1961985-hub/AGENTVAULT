@@ -9,7 +9,7 @@ async function main() {
   console.log("AgentVault MST Testnet Deployment");
   console.log("=================================");
 
-  console.log("Owner:", deployer.address);
+  console.log("Deployer / Owner:", deployer.address);
 
   const agentAddress = process.env.AGENT_ADDRESS;
 
@@ -22,6 +22,14 @@ async function main() {
   if (!ethers.isAddress(agentAddress)) {
     throw new Error(
       `Invalid AGENT_ADDRESS: ${agentAddress}`
+    );
+  }
+
+  if (
+    agentAddress === ethers.ZeroAddress
+  ) {
+    throw new Error(
+      "AGENT_ADDRESS cannot be zero address"
     );
   }
 
@@ -51,38 +59,94 @@ async function main() {
     expiry.toString()
   );
 
-  const AgentVault =
+  // -----------------------------------------------------------------------
+  // Deploy Factory
+  // -----------------------------------------------------------------------
+
+  const AgentVaultFactory =
     await ethers.getContractFactory(
-      "AgentVault"
+      "AgentVaultFactory"
     );
 
-  console.log("Deploying AgentVault...");
+  console.log(
+    "Deploying AgentVaultFactory..."
+  );
 
-  const vault =
-    await AgentVault.deploy(
+  const factory =
+    await AgentVaultFactory.deploy();
+
+  const factoryDeploymentTx =
+    factory.deploymentTransaction();
+
+  if (factoryDeploymentTx) {
+    console.log(
+      "Factory deployment transaction:",
+      factoryDeploymentTx.hash
+    );
+  }
+
+  await factory.waitForDeployment();
+
+  const factoryAddress =
+    await factory.getAddress();
+
+  console.log(
+    "AgentVaultFactory address:",
+    factoryAddress
+  );
+
+  // -----------------------------------------------------------------------
+  // Create AgentVault through Factory
+  // -----------------------------------------------------------------------
+
+  console.log(
+    "Creating AgentVault through Factory..."
+  );
+
+  const createTx =
+    await factory.createVault(
       agentAddress,
       expiry
     );
 
-  const deploymentTx =
-    vault.deploymentTransaction();
+  console.log(
+    "Vault creation transaction:",
+    createTx.hash
+  );
 
-  if (deploymentTx) {
-    console.log(
-      "Deployment transaction:",
-      deploymentTx.hash
+  await createTx.wait();
+
+  // -----------------------------------------------------------------------
+  // Read created vault
+  // -----------------------------------------------------------------------
+
+  const vaultAddress =
+    await factory.getVault(
+      deployer.address
+    );
+
+  if (
+    vaultAddress === ethers.ZeroAddress
+  ) {
+    throw new Error(
+      "Factory did not create a vault for the owner"
     );
   }
 
-  await vault.waitForDeployment();
-
-  const address =
-    await vault.getAddress();
-
   console.log(
     "AgentVault address:",
-    address
+    vaultAddress
   );
+
+  // -----------------------------------------------------------------------
+  // Connect to created vault
+  // -----------------------------------------------------------------------
+
+  const vault =
+    await ethers.getContractAt(
+      "AgentVault",
+      vaultAddress
+    );
 
   console.log(
     "Owner:",
@@ -110,6 +174,13 @@ async function main() {
   );
 
   console.log(
+    "Vault registered in factory:",
+    await factory.getVault(
+      deployer.address
+    )
+  );
+
+  console.log(
     "================================="
   );
   console.log(
@@ -118,6 +189,31 @@ async function main() {
   console.log(
     "================================="
   );
+
+  console.log("");
+  console.log("FINAL DEPLOYMENT INFORMATION");
+  console.log("---------------------------------");
+  console.log(
+    "AgentVaultFactory:",
+    factoryAddress
+  );
+  console.log(
+    "AgentVault:",
+    vaultAddress
+  );
+  console.log(
+    "Owner:",
+    deployer.address
+  );
+  console.log(
+    "Agent:",
+    agentAddress
+  );
+  console.log(
+    "Vault creation TX:",
+    createTx.hash
+  );
+  console.log("---------------------------------");
 }
 
 main().catch((error) => {

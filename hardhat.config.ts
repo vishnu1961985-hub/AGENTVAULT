@@ -28,6 +28,13 @@ export default defineConfig({
       type: "edr-simulated",
       chainType: "op",
     },
+    mstTestnet: {
+  type: "http",
+  chainType: "l1",
+  url: configVariable("MST_RPC_URL"),
+  chainId: 91562037,
+  accounts: [configVariable("MST_PRIVATE_KEY")]
+},
     sepolia: {
       type: "http",
       chainType: "l1",

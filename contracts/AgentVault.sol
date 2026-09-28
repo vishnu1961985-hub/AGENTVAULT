@@ -137,39 +137,43 @@ contract AgentVault {
     // ============================================================
 
     constructor(
-        address _agent,
-        uint256 _expiry
-    ) {
-        require(
-            _agent != address(0),
-            "Invalid agent"
-        );
+    address _owner,
+    address _agent,
+    uint256 _expiry
+) {
+    require(
+        _owner != address(0),
+        "Invalid owner"
+    );
 
-        owner = msg.sender;
-        agent = _agent;
-        expiry = _expiry;
+    require(
+        _agent != address(0),
+        "Invalid agent"
+    );
 
-        spendingDay =
-            block.timestamp / 1 days;
+    require(
+        _expiry > block.timestamp,
+        "Invalid expiry"
+    );
 
-        // Trust-tier implementation choices.
-        //
-        // Tier 0 = 100
-        // Tier 1 = 250
-        // Tier 2 = 500
-        // Tier 3 = 1000
-        //
-        // Owner can change these values.
-        maxTrustTier = 3;
-        paymentsToNextTier = 3;
+    owner = _owner;
+    agent = _agent;
+    expiry = _expiry;
 
-        tierDailyLimit[0] = 100;
-        tierDailyLimit[1] = 250;
-        tierDailyLimit[2] = 500;
-        tierDailyLimit[3] = 1000;
+    spendingDay =
+        block.timestamp / 1 days;
 
-        trustTier = 0;
-    }
+    maxTrustTier = 3;
+    paymentsToNextTier = 3;
+
+    tierDailyLimit[0] = 100;
+    tierDailyLimit[1] = 250;
+    tierDailyLimit[2] = 500;
+    tierDailyLimit[3] = 1000;
+
+    trustTier = 0;
+    cleanPayments = 0;
+}
 
     // ============================================================
     // MODIFIERS
