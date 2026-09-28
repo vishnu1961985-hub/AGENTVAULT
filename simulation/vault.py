@@ -196,6 +196,32 @@ class Vault:
                 "payment_id": payment_id,
             }
 
+        # Recheck the recipient allowlist at approval time.
+        if recipient not in self.allowlist:
+            return {
+                "label": SIMULATION_LABEL,
+                "status": "Blocked",
+                "reason": "Recipient is not allowlisted",
+                "payment_id": payment_id,
+            }
+
+        # Recheck the per-transaction maximum at approval time.
+        if amount <= 0:
+            return {
+                "label": SIMULATION_LABEL,
+                "status": "Blocked",
+                "reason": "Amount must be positive",
+                "payment_id": payment_id,
+            }
+
+        if amount > self.max_per_transaction:
+            return {
+                "label": SIMULATION_LABEL,
+                "status": "Blocked",
+                "reason": "Per-transaction maximum exceeded",
+                "payment_id": payment_id,
+            }
+
         if self.balance < amount:
             return {
                 "label": SIMULATION_LABEL,
@@ -207,8 +233,7 @@ class Vault:
         # Also check whether the payment was submitted after expiry.
         if (
             self.expires_at is not None
-            and datetime.fromisoformat(payment["createdAt"])
-            >= self.expires_at
+            and datetime.fromisoformat(payment["createdAt"]) >= self.expires_at
         ):
             return {
                 "label": SIMULATION_LABEL,
@@ -217,6 +242,7 @@ class Vault:
                 "payment_id": payment_id,
             }
 
+        # Recheck the daily limit before approval.
         daily_limit = self.effective_daily_limit()
         spent_today = self.daily_spending.get(payment_date, 0)
 
@@ -228,6 +254,7 @@ class Vault:
                 "payment_id": payment_id,
             }
 
+        # Recheck the recipient cap before approval.
         cap = self.recipient_caps.get(recipient)
         spent_to_recipient = self.recipient_spending.get(recipient, 0)
 

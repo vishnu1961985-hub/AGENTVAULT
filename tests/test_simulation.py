@@ -346,6 +346,51 @@ class TestAgentVaultSimulation(unittest.TestCase):
         self.assertEqual(vault.balance, 500)
         self.assertEqual(vault.pending_payments[0]["status"], "Pending")
 
+    def test_removed_recipient_cannot_be_approved(self):
+        vault = self.make_vault()
+        vault.max_per_transaction = 40
+
+        submitted = vault.submit_payment(
+            caller="agent-1",
+            recipient="merchant-1",
+            amount=21,
+            now=datetime(2026, 9, 28, 12, 0),
+        )
+
+        vault.allowlist.remove("merchant-1")
+
+        result = vault.approve_payment(
+            caller="owner-1",
+            payment_id=submitted["payment_id"],
+        )
+
+        self.assertEqual(result["status"], "Blocked")
+        self.assertIn("allowlisted", result["reason"])
+        self.assertEqual(vault.balance, 500)
+        self.assertEqual(vault.pending_payments[0]["status"], "Pending")
+
+    def test_reduced_transaction_maximum_blocks_approval(self):
+        vault = self.make_vault()
+        vault.max_per_transaction = 40
+
+        submitted = vault.submit_payment(
+            caller="agent-1",
+            recipient="merchant-1",
+            amount=21,
+            now=datetime(2026, 9, 28, 12, 0),
+        )
+
+        vault.max_per_transaction = 20
+
+        result = vault.approve_payment(
+            caller="owner-1",
+            payment_id=submitted["payment_id"],
+        )
+
+        self.assertEqual(result["status"], "Blocked")
+        self.assertIn("maximum", result["reason"])
+        self.assertEqual(vault.balance, 500)
+        self.assertEqual(vault.pending_payments[0]["status"], "Pending")
 
 if __name__ == "__main__":
     unittest.main()
