@@ -5,19 +5,26 @@ const { ethers } = await network.create();
 
 describe("AgentVault", function () {
   async function deployVault() {
-    const [owner, agent, recipient, other] =
-      await ethers.getSigners();
+    const [
+      owner,
+      agent,
+      recipient,
+      anotherRecipient,
+      stranger,
+    ] = await ethers.getSigners();
+
+    const latestBlock = await ethers.provider.getBlock("latest");
+
+    if (!latestBlock) {
+      throw new Error("Could not read latest block");
+    }
+
+    const expiry =
+      BigInt(latestBlock.timestamp) +
+      7n * 24n * 60n * 60n;
 
     const AgentVault =
       await ethers.getContractFactory("AgentVault");
-
-    const latestBlock =
-      await ethers.provider.getBlock("latest");
-
-    const currentTime = latestBlock!.timestamp;
-
-    const expiry =
-      currentTime + 7 * 24 * 60 * 60;
 
     const vault = await AgentVault.deploy(
       agent.address,
@@ -31,1281 +38,1506 @@ describe("AgentVault", function () {
       owner,
       agent,
       recipient,
-      other,
+      anotherRecipient,
+      stranger,
       expiry,
     };
   }
 
-  // ============================================================
-  // DEPLOYMENT
-  // ============================================================
+  async function allowRecipient(
+    vault: any,
+    owner: any,
+    recipient: any
+  ) {
+    await vault
+      .connect(owner)
+      .setRecipientApproval(
+        recipient.address,
+        true
+      );
+  }
 
-  describe("Deployment", function () {
-    it("sets owner, agent, expiry and initial state", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        expiry,
-      } = await deployVault();
+  async function setTierLimit(
+    vault: any,
+    owner: any,
+    limit: bigint
+  ) {
+    await vault
+      .connect(owner)
+      .setTierDailyLimit(
+        0,
+        limit
+      );
+  }
 
-      expect(await vault.owner())
-        .to.equal(owner.address);
-
-      expect(await vault.agent())
-        .to.equal(agent.address);
-
-      expect(await vault.expiry())
-        .to.equal(expiry);
-
-      expect(await vault.paused())
-        .to.equal(false);
-
-      expect(await vault.spentToday())
-        .to.equal(0);
-
-      expect(await vault.getSpentToday())
-        .to.equal(0);
-
-      expect(await vault.nextPaymentId())
-        .to.equal(0);
+  async function fundVault(
+    vault: any,
+    owner: any,
+    amount: bigint
+  ) {
+    await owner.sendTransaction({
+      to: await vault.getAddress(),
+      value: amount,
     });
+  }
+
+  async function preparePayment(
+    vault: any,
+    owner: any,
+    recipient: any,
+    amount: bigint = 1000n
+  ) {
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
+
+    const tierLimit =
+      amount > 1000n
+        ? amount
+        : 1000n;
+
+    await setTierLimit(
+      vault,
+      owner,
+      tierLimit
+    );
+
+    await fundVault(
+      vault,
+      owner,
+      amount
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Deployment
+  // -------------------------------------------------------------------------
+
+  it("sets the correct owner", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
+
+    expect(
+      await vault.owner()
+    ).to.equal(owner.address);
   });
 
-  // ============================================================
-  // OWNER CONTROLS
-  // ============================================================
+  it("sets the correct agent", async function () {
+    const {
+      vault,
+      agent,
+    } = await deployVault();
 
-  describe("Owner controls", function () {
-    it("allows owner to pause and unpause", async function () {
-      const { vault, owner } =
-        await deployVault();
+    expect(
+      await vault.agent()
+    ).to.equal(agent.address);
+  });
 
-      await vault
-        .connect(owner)
-        .pause();
+  it("sets the expiry", async function () {
+    const {
+      vault,
+      expiry,
+    } = await deployVault();
 
-      expect(await vault.paused())
-        .to.equal(true);
+    expect(
+      await vault.expiry()
+    ).to.equal(expiry);
+  });
 
-      await vault
-        .connect(owner)
-        .unpause();
+  it("starts unpaused", async function () {
+    const {
+      vault,
+    } = await deployVault();
 
-      expect(await vault.paused())
-        .to.equal(false);
-    });
+    expect(
+      await vault.paused()
+    ).to.equal(false);
+  });
 
-    it("prevents non-owner from pausing", async function () {
-      const { vault, other } =
-        await deployVault();
+  it("starts at trust tier zero", async function () {
+    const {
+      vault,
+    } = await deployVault();
 
-      await expect(
-        vault.connect(other).pause()
-      ).to.be.revertedWith("Not owner");
-    });
+    expect(
+      await vault.trustTier()
+    ).to.equal(0n);
+  });
 
-    it("prevents non-owner from unpausing", async function () {
-      const {
-        vault,
-        owner,
-        other,
-      } = await deployVault();
+  it("sets the default maximum trust tier", async function () {
+    const {
+      vault,
+    } = await deployVault();
 
-      await vault
-        .connect(owner)
-        .pause();
+    expect(
+      await vault.maxTrustTier()
+    ).to.equal(3n);
+  });
 
-      await expect(
-        vault.connect(other).unpause()
-      ).to.be.revertedWith("Not owner");
-    });
+  // -------------------------------------------------------------------------
+  // Active state
+  // -------------------------------------------------------------------------
 
-    it("allows owner to set per-transaction maximum", async function () {
-      const { vault, owner } =
-        await deployVault();
+  it("is active after deployment", async function () {
+    const {
+      vault,
+    } = await deployVault();
 
-      await vault
-        .connect(owner)
-        .setPerTransactionMax(100);
+    expect(
+      await vault.isActive()
+    ).to.equal(true);
+  });
 
-      expect(
-        await vault.perTransactionMax()
-      ).to.equal(100);
-    });
+  it("becomes inactive when paused", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
 
-    it("prevents non-owner from setting per-transaction maximum", async function () {
-      const { vault, other } =
-        await deployVault();
+    await vault
+      .connect(owner)
+      .pause();
 
-      await expect(
-        vault
-          .connect(other)
-          .setPerTransactionMax(100)
-      ).to.be.revertedWith("Not owner");
-    });
+    expect(
+      await vault.isActive()
+    ).to.equal(false);
+  });
 
-    it("allows owner to set daily limit", async function () {
-      const { vault, owner } =
-        await deployVault();
+  it("becomes active again after unpause", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
 
-      await vault
-        .connect(owner)
-        .setDailyLimit(500);
+    await vault
+      .connect(owner)
+      .pause();
 
-      expect(
-        await vault.dailyLimit()
-      ).to.equal(500);
-    });
+    await vault
+      .connect(owner)
+      .unpause();
 
-    it("prevents non-owner from setting daily limit", async function () {
-      const { vault, other } =
-        await deployVault();
+    expect(
+      await vault.isActive()
+    ).to.equal(true);
+  });
 
-      await expect(
-        vault
-          .connect(other)
-          .setDailyLimit(500)
-      ).to.be.revertedWith("Not owner");
-    });
+  // -------------------------------------------------------------------------
+  // Owner controls
+  // -------------------------------------------------------------------------
 
-    it("allows owner to configure recipient approval", async function () {
-      const {
-        vault,
-        owner,
-        recipient,
-      } = await deployVault();
+  it("allows owner to pause", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
 
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
+    await vault
+      .connect(owner)
+      .pause();
+
+    expect(
+      await vault.paused()
+    ).to.equal(true);
+  });
+
+  it("allows owner to unpause", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
+
+    await vault
+      .connect(owner)
+      .pause();
+
+    await vault
+      .connect(owner)
+      .unpause();
+
+    expect(
+      await vault.paused()
+    ).to.equal(false);
+  });
+
+  it("prevents non-owner from pausing", async function () {
+    const {
+      vault,
+      stranger,
+    } = await deployVault();
+
+    await expect(
+      vault
+        .connect(stranger)
+        .pause()
+    ).to.be.revertedWith("Not owner");
+  });
+
+  it("allows owner to set per transaction maximum", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
+
+    await vault
+      .connect(owner)
+      .setPerTransactionMax(500n);
+
+    expect(
+      await vault.perTransactionMax()
+    ).to.equal(500n);
+  });
+
+  it("allows owner to set daily limit", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
+
+    await vault
+      .connect(owner)
+      .setDailyLimit(1000n);
+
+    expect(
+      await vault.dailyLimit()
+    ).to.equal(1000n);
+  });
+
+  it("allows owner to set approval threshold", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
+
+    await vault
+      .connect(owner)
+      .setApprovalThreshold(250n);
+
+    expect(
+      await vault.approvalThreshold()
+    ).to.equal(250n);
+  });
+
+  // -------------------------------------------------------------------------
+  // Recipient allowlist
+  // -------------------------------------------------------------------------
+
+  it("allows owner to approve a recipient", async function () {
+    const {
+      vault,
+      owner,
+      recipient,
+    } = await deployVault();
+
+    await vault
+      .connect(owner)
+      .setRecipientApproval(
+        recipient.address,
+        true
+      );
+
+    expect(
+      await vault.approvedRecipient(
+        recipient.address
+      )
+    ).to.equal(true);
+  });
+
+  it("allows owner to remove a recipient", async function () {
+    const {
+      vault,
+      owner,
+      recipient,
+    } = await deployVault();
+
+    await vault
+      .connect(owner)
+      .setRecipientApproval(
+        recipient.address,
+        true
+      );
+
+    await vault
+      .connect(owner)
+      .setRecipientApproval(
+        recipient.address,
+        false
+      );
+
+    expect(
+      await vault.approvedRecipient(
+        recipient.address
+      )
+    ).to.equal(false);
+  });
+
+  it("allows owner to configure a recipient cap", async function () {
+    const {
+      vault,
+      owner,
+      recipient,
+    } = await deployVault();
+
+    await vault
+      .connect(owner)
+      .setRecipientCap(
+        recipient.address,
+        500n
+      );
+
+    expect(
+      await vault.recipientCap(
+        recipient.address
+      )
+    ).to.equal(500n);
+  });
+
+  // -------------------------------------------------------------------------
+  // Authorization
+  // -------------------------------------------------------------------------
+
+  it("rejects payment calls from unauthorized callers", async function () {
+    const {
+      vault,
+      stranger,
+      recipient,
+    } = await deployVault();
+
+    await expect(
+      vault
+        .connect(stranger)
+        .pay(
           recipient.address,
-          true
-        );
-
-      expect(
-        await vault.approvedRecipient(
-          recipient.address
+          10n,
+          ethers.keccak256(
+            ethers.toUtf8Bytes("receipt")
+          )
         )
-      ).to.equal(true);
-    });
+    ).to.be.revertedWith("Not agent");
+  });
 
-    it("prevents non-owner from configuring recipient approval", async function () {
-      const {
-        vault,
-        other,
-        recipient,
-      } = await deployVault();
+  // -------------------------------------------------------------------------
+  // Payment blocking
+  // -------------------------------------------------------------------------
 
-      await expect(
-        vault
-          .connect(other)
-          .setRecipientApproval(
-            recipient.address,
-            true
-          )
-      ).to.be.revertedWith("Not owner");
-    });
+  it("blocks payment to a non-approved recipient", async function () {
+    const {
+      vault,
+      agent,
+      recipient,
+    } = await deployVault();
 
-    it("allows owner to configure recipient cap", async function () {
-      const {
-        vault,
-        owner,
-        recipient,
-      } = await deployVault();
+    const receiptHash =
+      ethers.keccak256(
+        ethers.toUtf8Bytes("blocked")
+      );
 
-      await vault
-        .connect(owner)
-        .setRecipientCap(
+    await expect(
+      vault
+        .connect(agent)
+        .pay(
           recipient.address,
-          250
-        );
-
-      expect(
-        await vault.recipientCap(
-          recipient.address
+          10n,
+          receiptHash
         )
-      ).to.equal(250);
-    });
-
-    it("prevents non-owner from configuring recipient cap", async function () {
-      const {
-        vault,
-        other,
-        recipient,
-      } = await deployVault();
-
-      await expect(
-        vault
-          .connect(other)
-          .setRecipientCap(
-            recipient.address,
-            250
-          )
-      ).to.be.revertedWith("Not owner");
-    });
-
-    it("allows owner to set approval threshold", async function () {
-      const { vault, owner } =
-        await deployVault();
-
-      await vault
-        .connect(owner)
-        .setApprovalThreshold(100);
-
-      expect(
-        await vault.approvalThreshold()
-      ).to.equal(100);
-    });
-
-    it("prevents non-owner from setting approval threshold", async function () {
-      const { vault, other } =
-        await deployVault();
-
-      await expect(
-        vault
-          .connect(other)
-          .setApprovalThreshold(100)
-      ).to.be.revertedWith("Not owner");
-    });
+    ).to.emit(vault, "Blocked");
   });
 
-  // ============================================================
-  // VAULT ACTIVITY
-  // ============================================================
+  it("blocks payment when the vault is paused", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
 
-  describe("Vault activity", function () {
-    it("is active after deployment", async function () {
-      const { vault } =
-        await deployVault();
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
 
-      expect(
-        await vault.isActive()
-      ).to.equal(true);
-    });
-
-    it("becomes inactive when paused", async function () {
-      const {
-        vault,
-        owner,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .pause();
-
-      expect(
-        await vault.isActive()
-      ).to.equal(false);
-    });
-
-    it("becomes active again after unpause", async function () {
-      const {
-        vault,
-        owner,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .pause();
-
-      await vault
-        .connect(owner)
-        .unpause();
-
-      expect(
-        await vault.isActive()
-      ).to.equal(true);
-    });
-
-    it("becomes inactive after expiry", async function () {
-      const { vault } =
-        await deployVault();
-
-      await ethers.provider.send(
-        "evm_increaseTime",
-        [7 * 24 * 60 * 60 + 1]
+    await vault
+      .connect(owner)
+      .setTierDailyLimit(
+        0,
+        1000n
       );
 
-      await ethers.provider.send(
-        "evm_mine",
-        []
+    await fundVault(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(owner)
+      .pause();
+
+    await expect(
+      vault
+        .connect(agent)
+        .pay(
+          recipient.address,
+          10n,
+          ethers.ZeroHash
+        )
+    ).to.emit(vault, "Blocked");
+  });
+
+  it("blocks payment above the transaction maximum", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await preparePayment(
+      vault,
+      owner,
+      recipient,
+      1000n
+    );
+
+    await vault
+      .connect(owner)
+      .setPerTransactionMax(100n);
+
+    await expect(
+      vault
+        .connect(agent)
+        .pay(
+          recipient.address,
+          200n,
+          ethers.ZeroHash
+        )
+    ).to.emit(vault, "Blocked");
+  });
+
+  it("blocks payment above the daily limit", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
+
+    await setTierLimit(
+      vault,
+      owner,
+      100n
+    );
+
+    await fundVault(
+      vault,
+      owner,
+      1000n
+    );
+
+    await expect(
+      vault
+        .connect(agent)
+        .pay(
+          recipient.address,
+          101n,
+          ethers.ZeroHash
+        )
+    ).to.emit(vault, "Blocked");
+  });
+
+  it("blocks payment above the recipient cap", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await preparePayment(
+      vault,
+      owner,
+      recipient,
+      1000n
+    );
+
+    await vault
+      .connect(owner)
+      .setRecipientCap(
+        recipient.address,
+        100n
       );
 
-      expect(
-        await vault.isActive()
-      ).to.equal(false);
-    });
+    await expect(
+      vault
+        .connect(agent)
+        .pay(
+          recipient.address,
+          200n,
+          ethers.ZeroHash
+        )
+    ).to.emit(vault, "Blocked");
   });
 
-  // ============================================================
-  // PAYMENT AUTHORIZATION
-  // ============================================================
+  it("blocks payment when balance is insufficient", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
 
-  describe("Payment authorization", function () {
-    it("blocks unauthorized caller", async function () {
-      const {
-        vault,
-        other,
-        recipient,
-      } = await deployVault();
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
 
-      const receiptHash =
-        ethers.id("unauthorized-payment");
-
-      await expect(
-        vault
-          .connect(other)
-          .pay(
-            recipient.address,
-            10,
-            receiptHash
-          )
-      )
-        .to.emit(vault, "PaymentDecision")
-        .withArgs(
-          other.address,
-          recipient.address,
-          10,
-          1,
-          1,
-          receiptHash
-        );
-
-      expect(
-        await vault.nextPaymentId()
-      ).to.equal(1);
-    });
-
-    it("allows authorized agent to continue through payment checks", async function () {
-      const {
-        vault,
-        agent,
-        recipient,
-      } = await deployVault();
-
-      const receiptHash =
-        ethers.id("agent-payment");
-
-      await expect(
-        vault
-          .connect(agent)
-          .pay(
-            recipient.address,
-            10,
-            receiptHash
-          )
-      )
-        .to.emit(vault, "PaymentDecision")
-        .withArgs(
-          agent.address,
-          recipient.address,
-          10,
-          1,
-          4,
-          receiptHash
-        );
-    });
-  });
-
-  // ============================================================
-  // VAULT STATE CHECKS
-  // ============================================================
-
-  describe("Vault state checks", function () {
-    it("blocks payment when paused", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .pause();
-
-      const receiptHash =
-        ethers.id("paused-payment");
-
-      await expect(
-        vault
-          .connect(agent)
-          .pay(
-            recipient.address,
-            10,
-            receiptHash
-          )
-      )
-        .to.emit(vault, "PaymentDecision")
-        .withArgs(
-          agent.address,
-          recipient.address,
-          10,
-          1,
-          2,
-          receiptHash
-        );
-    });
-
-    it("blocks payment after expiry", async function () {
-      const {
-        vault,
-        agent,
-        recipient,
-      } = await deployVault();
-
-      await ethers.provider.send(
-        "evm_increaseTime",
-        [7 * 24 * 60 * 60 + 1]
+    // Raise the Tier 0 limit so the test reaches
+    // the balance check instead of the daily-limit check.
+    await vault
+      .connect(owner)
+      .setTierDailyLimit(
+        0,
+        2000n
       );
 
-      await ethers.provider.send(
-        "evm_mine",
-        []
+    await expect(
+      vault
+        .connect(agent)
+        .pay(
+          recipient.address,
+          1000n,
+          ethers.ZeroHash
+        )
+    ).to.emit(vault, "Blocked");
+  });
+
+  // -------------------------------------------------------------------------
+  // Allowed payment
+  // -------------------------------------------------------------------------
+
+  it("transfers funds to recipient", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await preparePayment(
+      vault,
+      owner,
+      recipient,
+      1000n
+    );
+
+    const before =
+      await ethers.provider.getBalance(
+        recipient.address
       );
 
-      const receiptHash =
-        ethers.id("expired-payment");
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        300n,
+        ethers.ZeroHash
+      );
 
-      await expect(
-        vault
-          .connect(agent)
-          .pay(
-            recipient.address,
-            10,
-            receiptHash
-          )
-      )
-        .to.emit(vault, "PaymentDecision")
-        .withArgs(
-          agent.address,
-          recipient.address,
-          10,
-          1,
-          3,
-          receiptHash
-        );
-    });
+    const after =
+      await ethers.provider.getBalance(
+        recipient.address
+      );
+
+    expect(
+      after - before
+    ).to.equal(300n);
   });
 
-  // ============================================================
-  // RECIPIENT ALLOWLIST
-  // ============================================================
+  it("records an allowed payment", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
 
-  describe("Recipient allowlist", function () {
-    it("blocks unapproved recipient", async function () {
-      const {
-        vault,
-        agent,
-        recipient,
-      } = await deployVault();
+    await preparePayment(
+      vault,
+      owner,
+      recipient,
+      1000n
+    );
 
-      const receiptHash =
-        ethers.id("unapproved-recipient");
-
-      await expect(
-        vault
-          .connect(agent)
-          .pay(
-            recipient.address,
-            10,
-            receiptHash
-          )
-      )
-        .to.emit(vault, "PaymentDecision")
-        .withArgs(
-          agent.address,
+    await expect(
+      vault
+        .connect(agent)
+        .pay(
           recipient.address,
-          10,
-          1,
-          4,
-          receiptHash
-        );
-    });
-
-    it("allows payment to approved recipient", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
-
-      const receiptHash =
-        ethers.id("approved-recipient");
-
-      await expect(
-        vault
-          .connect(agent)
-          .pay(
-            recipient.address,
-            10,
-            receiptHash
-          )
-      )
-        .to.emit(vault, "Allowed")
-        .withArgs(
-          0,
-          recipient.address,
-          10,
-          receiptHash
-        );
-    });
+          300n,
+          ethers.ZeroHash
+        )
+    ).to.emit(vault, "Allowed");
   });
 
-  // ============================================================
-  // PER TRANSACTION MAXIMUM
-  // ============================================================
+  it("updates spent today after an allowed payment", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
 
-  describe("Per-transaction maximum", function () {
-    it("blocks payment exceeding transaction maximum", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
+    await preparePayment(
+      vault,
+      owner,
+      recipient,
+      1000n
+    );
 
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        300n,
+        ethers.ZeroHash
+      );
 
-      await vault
-        .connect(owner)
-        .setPerTransactionMax(100);
-
-      const receiptHash =
-        ethers.id("transaction-too-large");
-
-      await expect(
-        vault
-          .connect(agent)
-          .pay(
-            recipient.address,
-            101,
-            receiptHash
-          )
-      )
-        .to.emit(vault, "PaymentDecision")
-        .withArgs(
-          agent.address,
-          recipient.address,
-          101,
-          1,
-          5,
-          receiptHash
-        );
-
-      expect(
-        await vault.spentToday()
-      ).to.equal(0);
-    });
+    expect(
+      await vault.getSpentToday()
+    ).to.equal(300n);
   });
 
-  // ============================================================
-  // DAILY LIMIT
-  // ============================================================
+  // -------------------------------------------------------------------------
+  // Pending payments
+  // -------------------------------------------------------------------------
 
-  describe("Daily spending limit", function () {
-    it("initializes daily spending correctly", async function () {
-      const { vault } =
-        await deployVault();
+  it("creates a pending payment above approval threshold", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
 
-      expect(
-        await vault.spentToday()
-      ).to.equal(0);
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
 
-      expect(
-        await vault.getSpentToday()
-      ).to.equal(0);
-    });
+    await setTierLimit(
+      vault,
+      owner,
+      1000n
+    );
 
-    it("accumulates spending on same day", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
+    await vault
+      .connect(owner)
+      .setApprovalThreshold(100n);
 
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
+    await fundVault(
+      vault,
+      owner,
+      1000n
+    );
+
+    await expect(
+      vault
+        .connect(agent)
+        .pay(
           recipient.address,
-          true
-        );
+          200n,
+          ethers.ZeroHash
+        )
+    ).to.emit(vault, "Pending");
 
-      await vault
+    const payment =
+      await vault.getPayment(0n);
+
+    expect(
+      payment.recipient
+    ).to.equal(recipient.address);
+
+    expect(
+      payment.amount
+    ).to.equal(200n);
+
+    expect(
+      payment.status
+    ).to.equal(2n);
+  });
+
+  it("does not transfer funds while payment is pending", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
+
+    await setTierLimit(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(owner)
+      .setApprovalThreshold(100n);
+
+    await fundVault(
+      vault,
+      owner,
+      1000n
+    );
+
+    const before =
+      await ethers.provider.getBalance(
+        recipient.address
+      );
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        200n,
+        ethers.ZeroHash
+      );
+
+    const after =
+      await ethers.provider.getBalance(
+        recipient.address
+      );
+
+    expect(
+      after
+    ).to.equal(before);
+  });
+
+  // -------------------------------------------------------------------------
+  // Pending approval
+  // -------------------------------------------------------------------------
+
+  it("allows owner to approve pending payment", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
+
+    await setTierLimit(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(owner)
+      .setApprovalThreshold(100n);
+
+    await fundVault(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        200n,
+        ethers.ZeroHash
+      );
+
+    await expect(
+      vault
         .connect(owner)
-        .setDailyLimit(1000);
+        .approvePayment(0n)
+    ).to.emit(
+      vault,
+      "PendingApproved"
+    );
 
+    const payment =
+      await vault.getPayment(0n);
+
+    expect(
+      payment.status
+    ).to.equal(0n);
+  });
+
+  it("transfers funds when pending payment is approved", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
+
+    await setTierLimit(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(owner)
+      .setApprovalThreshold(100n);
+
+    await fundVault(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        200n,
+        ethers.ZeroHash
+      );
+
+    const before =
+      await ethers.provider.getBalance(
+        recipient.address
+      );
+
+    await vault
+      .connect(owner)
+      .approvePayment(0n);
+
+    const after =
+      await ethers.provider.getBalance(
+        recipient.address
+      );
+
+    expect(
+      after - before
+    ).to.equal(200n);
+  });
+
+  it("prevents non-owner from approving pending payment", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+      stranger,
+    } = await deployVault();
+
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
+
+    await setTierLimit(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(owner)
+      .setApprovalThreshold(100n);
+
+    await fundVault(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        200n,
+        ethers.ZeroHash
+      );
+
+    await expect(
+      vault
+        .connect(stranger)
+        .approvePayment(0n)
+    ).to.be.revertedWith(
+      "Not owner"
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Pending rejection
+  // -------------------------------------------------------------------------
+
+  it("allows owner to reject pending payment", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
+
+    await setTierLimit(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(owner)
+      .setApprovalThreshold(100n);
+
+    await fundVault(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        200n,
+        ethers.ZeroHash
+      );
+
+    await expect(
+      vault
+        .connect(owner)
+        .rejectPayment(0n)
+    ).to.emit(
+      vault,
+      "PendingRejected"
+    );
+
+    const payment =
+      await vault.getPayment(0n);
+
+    expect(
+      payment.status
+    ).to.equal(1n);
+  });
+
+  it("does not transfer funds when pending payment is rejected", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
+
+    await setTierLimit(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(owner)
+      .setApprovalThreshold(100n);
+
+    await fundVault(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        200n,
+        ethers.ZeroHash
+      );
+
+    const before =
+      await ethers.provider.getBalance(
+        recipient.address
+      );
+
+    await vault
+      .connect(owner)
+      .rejectPayment(0n);
+
+    const after =
+      await ethers.provider.getBalance(
+        recipient.address
+      );
+
+    expect(
+      after
+    ).to.equal(before);
+  });
+
+  it("prevents non-owner from rejecting pending payment", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+      stranger,
+    } = await deployVault();
+
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
+
+    await setTierLimit(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(owner)
+      .setApprovalThreshold(100n);
+
+    await fundVault(
+      vault,
+      owner,
+      1000n
+    );
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        200n,
+        ethers.ZeroHash
+      );
+
+    await expect(
+      vault
+        .connect(stranger)
+        .rejectPayment(0n)
+    ).to.be.revertedWith(
+      "Not owner"
+    );
+  });
+
+  it("cannot approve a non-pending payment", async function () {
+    const {
+      vault,
+      owner,
+      recipient,
+    } = await deployVault();
+
+    await allowRecipient(
+      vault,
+      owner,
+      recipient
+    );
+
+    await expect(
+      vault
+        .connect(owner)
+        .approvePayment(0n)
+    ).to.be.revertedWith(
+      "Not pending"
+    );
+  });
+
+  it("cannot reject a non-pending payment", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
+
+    await expect(
+      vault
+        .connect(owner)
+        .rejectPayment(0n)
+    ).to.be.revertedWith(
+      "Not pending"
+    );
+  });
+
+  // -------------------------------------------------------------------------
+  // Receipt hash
+  // -------------------------------------------------------------------------
+
+  it("stores the receipt hash", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await preparePayment(
+      vault,
+      owner,
+      recipient,
+      1000n
+    );
+
+    const receiptHash =
+      ethers.keccak256(
+        ethers.toUtf8Bytes(
+          "agent decision receipt"
+        )
+      );
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        100n,
+        receiptHash
+      );
+
+    const payment =
+      await vault.getPayment(0n);
+
+    expect(
+      payment.receiptHash
+    ).to.equal(receiptHash);
+  });
+
+  // -------------------------------------------------------------------------
+  // Trust tiers
+  // -------------------------------------------------------------------------
+
+  it("starts with zero clean payments", async function () {
+    const {
+      vault,
+    } = await deployVault();
+
+    expect(
+      await vault.cleanPayments()
+    ).to.equal(0n);
+  });
+
+  it("increases trust tier after required clean payments", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await preparePayment(
+      vault,
+      owner,
+      recipient,
+      1000n
+    );
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        10n,
+        ethers.ZeroHash
+      );
+
+    expect(
+      await vault.trustTier()
+    ).to.equal(0n);
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        10n,
+        ethers.ZeroHash
+      );
+
+    expect(
+      await vault.trustTier()
+    ).to.equal(0n);
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        10n,
+        ethers.ZeroHash
+      );
+
+    expect(
+      await vault.trustTier()
+    ).to.equal(1n);
+  });
+
+  it("resets trust tier after a blocked payment", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await preparePayment(
+      vault,
+      owner,
+      recipient,
+      1000n
+    );
+
+    // Three clean payments move Tier 0 -> Tier 1.
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        10n,
+        ethers.ZeroHash
+      );
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        10n,
+        ethers.ZeroHash
+      );
+
+    await vault
+      .connect(agent)
+      .pay(
+        recipient.address,
+        10n,
+        ethers.ZeroHash
+      );
+
+    expect(
+      await vault.trustTier()
+    ).to.equal(1n);
+
+    // Blocked because recipient is not allowlisted.
+    await expect(
+      vault
+        .connect(agent)
+        .pay(
+          "0x0000000000000000000000000000000000000001",
+          10n,
+          ethers.ZeroHash
+        )
+    ).to.emit(
+      vault,
+      "Blocked"
+    );
+
+    expect(
+      await vault.trustTier()
+    ).to.equal(0n);
+
+    expect(
+      await vault.cleanPayments()
+    ).to.equal(0n);
+  });
+
+  it("does not exceed the maximum trust tier", async function () {
+    const {
+      vault,
+      owner,
+      agent,
+      recipient,
+    } = await deployVault();
+
+    await preparePayment(
+      vault,
+      owner,
+      recipient,
+      1000n
+    );
+
+    for (let i = 0; i < 20; i++) {
       await vault
         .connect(agent)
         .pay(
           recipient.address,
-          100,
-          ethers.id("payment-1")
+          10n,
+          ethers.ZeroHash
         );
-
-      await vault
-        .connect(agent)
-        .pay(
-          recipient.address,
-          200,
-          ethers.id("payment-2")
-        );
-
-      expect(
-        await vault.getSpentToday()
-      ).to.equal(300);
-    });
-
-    it("blocks payment exceeding daily limit", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
-
-      await vault
-        .connect(owner)
-        .setDailyLimit(250);
-
-      await vault
-        .connect(agent)
-        .pay(
-          recipient.address,
-          200,
-          ethers.id("payment-1")
-        );
-
-      const receiptHash =
-        ethers.id("daily-limit-exceeded");
-
-      await expect(
-        vault
-          .connect(agent)
-          .pay(
-            recipient.address,
-            100,
-            receiptHash
-          )
-      )
-        .to.emit(vault, "PaymentDecision")
-        .withArgs(
-          agent.address,
-          recipient.address,
-          100,
-          1,
-          6,
-          receiptHash
-        );
-
-      expect(
-        await vault.getSpentToday()
-      ).to.equal(200);
-    });
-
-    it("returns zero after a new day", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
-
-      await vault
-        .connect(owner)
-        .setDailyLimit(1000);
-
-      await vault
-        .connect(agent)
-        .pay(
-          recipient.address,
-          200,
-          ethers.id("payment")
-        );
-
-      expect(
-        await vault.getSpentToday()
-      ).to.equal(200);
-
-      await ethers.provider.send(
-        "evm_increaseTime",
-        [24 * 60 * 60]
-      );
-
-      await ethers.provider.send(
-        "evm_mine",
-        []
-      );
-
-      expect(
-        await vault.getSpentToday()
-      ).to.equal(0);
-    });
-  });
-
-  // ============================================================
-  // RECIPIENT CAP
-  // ============================================================
-
-  describe("Recipient cap", function () {
-    it("blocks payment exceeding recipient cap", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
-
-      await vault
-        .connect(owner)
-        .setRecipientCap(
-          recipient.address,
-          50
-        );
-
-      const receiptHash =
-        ethers.id("recipient-cap-exceeded");
-
-      await expect(
-        vault
-          .connect(agent)
-          .pay(
-            recipient.address,
-            100,
-            receiptHash
-          )
-      )
-        .to.emit(vault, "PaymentDecision")
-        .withArgs(
-          agent.address,
-          recipient.address,
-          100,
-          1,
-          7,
-          receiptHash
-        );
-
-      expect(
-        await vault.getSpentToday()
-      ).to.equal(0);
-    });
-  });
-
-  // ============================================================
-  // APPROVAL THRESHOLD
-  // ============================================================
-
-  describe("Approval threshold", function () {
-    it("stores approval threshold", async function () {
-      const {
-        vault,
-        owner,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .setApprovalThreshold(100);
-
-      expect(
-        await vault.approvalThreshold()
-      ).to.equal(100);
-    });
-
-    it("marks payment as pending above approval threshold", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
-
-      await vault
-        .connect(owner)
-        .setApprovalThreshold(100);
-
-      const receiptHash =
-        ethers.id("pending-payment");
-
-      await expect(
-        vault
-          .connect(agent)
-          .pay(
-            recipient.address,
-            200,
-            receiptHash
-          )
-      )
-        .to.emit(vault, "Pending")
-        .withArgs(
-          0,
-          recipient.address,
-          200,
-          receiptHash
-        );
-
-      const payment =
-        await vault.getPayment(0);
-
-      expect(payment[0])
-        .to.equal(recipient.address);
-
-      expect(payment[1])
-        .to.equal(200);
-
-      expect(payment[2])
-        .to.equal(receiptHash);
-
-      expect(payment[3])
-        .to.equal(2);
-
-      expect(
-        await vault.getSpentToday()
-      ).to.equal(0);
-    });
-
-    it("emits Pending for payment above threshold", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
-
-      await vault
-        .connect(owner)
-        .setApprovalThreshold(100);
-
-      const receiptHash =
-        ethers.id("pending-result");
-
-      await expect(
-        vault
-          .connect(agent)
-          .pay(
-            recipient.address,
-            200,
-            receiptHash
-          )
-      )
-        .to.emit(vault, "Pending")
-        .withArgs(
-          0,
-          recipient.address,
-          200,
-          receiptHash
-        );
-    });
-
-    it("does not spend daily limit while pending", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
-
-      await vault
-        .connect(owner)
-        .setApprovalThreshold(100);
-
-      await vault
-        .connect(agent)
-        .pay(
-          recipient.address,
-          200,
-          ethers.id("pending")
-        );
-
-      expect(
-        await vault.getSpentToday()
-      ).to.equal(0);
-    });
-  });
-
-  // ============================================================
-  // PENDING APPROVAL
-  // ============================================================
-
-  describe("Pending approval", function () {
-    async function createPendingPayment() {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
-
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
-
-      await vault
-        .connect(owner)
-        .setApprovalThreshold(100);
-
-      const receiptHash =
-        ethers.id("pending-approval");
-
-      await vault
-        .connect(agent)
-        .pay(
-          recipient.address,
-          200,
-          receiptHash
-        );
-
-      return {
-        vault,
-        owner,
-        agent,
-        recipient,
-        receiptHash,
-      };
     }
 
-    it("allows owner to approve pending payment", async function () {
-      const {
-        vault,
-        owner,
-      } = await createPendingPayment();
-
-      await expect(
-        vault
-          .connect(owner)
-          .approvePayment(0)
-      )
-        .to.emit(vault, "PendingApproved")
-        .withArgs(0);
-
-      const payment =
-        await vault.getPayment(0);
-
-      expect(payment[3])
-        .to.equal(0);
-
-      expect(
-        await vault.getSpentToday()
-      ).to.equal(200);
-
-      await expect(
-        vault
-          .connect(owner)
-          .approvePayment(0)
-      )
-        .to.be.revertedWith("Not pending");
-    });
-
-    it("prevents non-owner from approving pending payment", async function () {
-      const {
-        vault,
-        agent,
-      } = await createPendingPayment();
-
-      await expect(
-        vault
-          .connect(agent)
-          .approvePayment(0)
-      )
-        .to.be.revertedWith("Not owner");
-    });
-
-    it("emits Allowed when owner approves pending payment", async function () {
-      const {
-        vault,
-        owner,
-        recipient,
-        receiptHash,
-      } = await createPendingPayment();
-
-      await expect(
-        vault
-          .connect(owner)
-          .approvePayment(0)
-      )
-        .to.emit(vault, "Allowed")
-        .withArgs(
-          0,
-          recipient.address,
-          200,
-          receiptHash
-        );
-    });
+    expect(
+      await vault.trustTier()
+    ).to.equal(3n);
   });
 
-  // ============================================================
-  // PENDING REJECTION
-  // ============================================================
+  it("allows owner to change maximum trust tier", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
 
-  describe("Pending rejection", function () {
-    async function createPendingPayment() {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
+    await vault
+      .connect(owner)
+      .setMaxTrustTier(5n);
 
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
-
-      await vault
-        .connect(owner)
-        .setApprovalThreshold(100);
-
-      const receiptHash =
-        ethers.id("pending-rejection");
-
-      await vault
-        .connect(agent)
-        .pay(
-          recipient.address,
-          200,
-          receiptHash
-        );
-
-      return {
-        vault,
-        owner,
-        agent,
-        recipient,
-        receiptHash,
-      };
-    }
-
-    it("allows owner to reject pending payment", async function () {
-      const {
-        vault,
-        owner,
-      } = await createPendingPayment();
-
-      await expect(
-        vault
-          .connect(owner)
-          .rejectPayment(0)
-      )
-        .to.emit(vault, "PendingRejected")
-        .withArgs(0);
-
-      const payment =
-        await vault.getPayment(0);
-
-      expect(payment[3])
-        .to.equal(1);
-
-      expect(
-        await vault.getSpentToday()
-      ).to.equal(0);
-    });
-
-    it("prevents non-owner from rejecting pending payment", async function () {
-      const {
-        vault,
-        agent,
-      } = await createPendingPayment();
-
-      await expect(
-        vault
-          .connect(agent)
-          .rejectPayment(0)
-      )
-        .to.be.revertedWith("Not owner");
-    });
-
-    it("emits Blocked when owner rejects pending payment", async function () {
-      const {
-        vault,
-        owner,
-        recipient,
-        receiptHash,
-      } = await createPendingPayment();
-
-      await expect(
-        vault
-          .connect(owner)
-          .rejectPayment(0)
-      )
-        .to.emit(vault, "Blocked")
-        .withArgs(
-          0,
-          recipient.address,
-          200,
-          0,
-          receiptHash
-        );
-    });
-
-    it("cannot reject an already rejected payment", async function () {
-      const {
-        vault,
-        owner,
-      } = await createPendingPayment();
-
-      await vault
-        .connect(owner)
-        .rejectPayment(0);
-
-      await expect(
-        vault
-          .connect(owner)
-          .rejectPayment(0)
-      )
-        .to.be.revertedWith("Not pending");
-    });
+    expect(
+      await vault.maxTrustTier()
+    ).to.equal(5n);
   });
 
-  // ============================================================
-  // PAYMENT RECORDS
-  // ============================================================
+  it("allows owner to change payments required for next tier", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
 
-  describe("Payment records", function () {
-    it("stores an allowed payment", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
+    await vault
+      .connect(owner)
+      .setPaymentsToNextTier(5n);
 
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
+    expect(
+      await vault.paymentsToNextTier()
+    ).to.equal(5n);
+  });
 
-      const receiptHash =
-        ethers.id("allowed-payment");
+  it("allows owner to configure tier daily limit", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
 
-      await vault
-        .connect(agent)
-        .pay(
-          recipient.address,
-          50,
-          receiptHash
-        );
+    await vault
+      .connect(owner)
+      .setTierDailyLimit(
+        1,
+        500n
+      );
 
-      const payment =
-        await vault.getPayment(0);
+    expect(
+      await vault.tierDailyLimit(1n)
+    ).to.equal(500n);
+  });
 
-      expect(payment[0])
-        .to.equal(recipient.address);
+  // -------------------------------------------------------------------------
+  // Balance
+  // -------------------------------------------------------------------------
 
-      expect(payment[1])
-        .to.equal(50);
+  it("reports vault balance", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
 
-      expect(payment[2])
-        .to.equal(receiptHash);
+    await fundVault(
+      vault,
+      owner,
+      500n
+    );
 
-      expect(payment[3])
-        .to.equal(0);
-    });
+    expect(
+      await vault.getVaultBalance()
+    ).to.equal(500n);
+  });
 
-    it("increments payment IDs", async function () {
-      const {
-        vault,
-        owner,
-        agent,
-        recipient,
-      } = await deployVault();
+  // -------------------------------------------------------------------------
+  // Effective daily limit
+  // -------------------------------------------------------------------------
 
-      await vault
-        .connect(owner)
-        .setRecipientApproval(
-          recipient.address,
-          true
-        );
+  it("uses the tier limit when owner daily limit is zero", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
 
-      await vault
-        .connect(agent)
-        .pay(
-          recipient.address,
-          10,
-          ethers.id("payment-1")
-        );
+    await vault
+      .connect(owner)
+      .setDailyLimit(0n);
 
-      await vault
-        .connect(agent)
-        .pay(
-          recipient.address,
-          20,
-          ethers.id("payment-2")
-        );
+    await vault
+      .connect(owner)
+      .setTierDailyLimit(
+        0,
+        100n
+      );
 
-      expect(
-        await vault.nextPaymentId()
-      ).to.equal(2);
+    expect(
+      await vault.getEffectiveDailyLimit()
+    ).to.equal(100n);
+  });
 
-      expect(
-        (await vault.getPayment(0))[1]
-      ).to.equal(10);
+  it("uses the owner limit when tier limit is zero", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
 
-      expect(
-        (await vault.getPayment(1))[1]
-      ).to.equal(20);
-    });
+    await vault
+      .connect(owner)
+      .setDailyLimit(200n);
+
+    await vault
+      .connect(owner)
+      .setTierDailyLimit(
+        0,
+        0n
+      );
+
+    expect(
+      await vault.getEffectiveDailyLimit()
+    ).to.equal(200n);
+  });
+
+  it("uses the lower of owner and tier limits", async function () {
+    const {
+      vault,
+      owner,
+    } = await deployVault();
+
+    await vault
+      .connect(owner)
+      .setDailyLimit(200n);
+
+    await vault
+      .connect(owner)
+      .setTierDailyLimit(
+        0,
+        100n
+      );
+
+    expect(
+      await vault.getEffectiveDailyLimit()
+    ).to.equal(100n);
   });
 });

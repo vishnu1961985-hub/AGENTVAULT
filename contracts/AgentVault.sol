@@ -2,6 +2,10 @@
 pragma solidity ^0.8.34;
 
 contract AgentVault {
+    // ============================================================
+    // ENUMS
+    // ============================================================
+
     enum Status {
         Allowed,
         Blocked,
@@ -16,8 +20,13 @@ contract AgentVault {
         RecipientNotAllowed,
         ExceedsTransactionMaximum,
         ExceedsDailyLimit,
-        ExceedsRecipientCap
+        ExceedsRecipientCap,
+        InsufficientBalance
     }
+
+    // ============================================================
+    // STRUCTS
+    // ============================================================
 
     struct Payment {
         address recipient;
@@ -26,9 +35,9 @@ contract AgentVault {
         Status status;
     }
 
-    // --------------------------------------------------
-    // Events
-    // --------------------------------------------------
+    // ============================================================
+    // EVENTS
+    // ============================================================
 
     event PaymentDecision(
         address indexed agent,
@@ -61,13 +70,22 @@ contract AgentVault {
         bytes32 receiptHash
     );
 
-    event PendingApproved(uint256 indexed id);
+    event PendingApproved(
+        uint256 indexed id
+    );
 
-    event PendingRejected(uint256 indexed id);
+    event PendingRejected(
+        uint256 indexed id
+    );
 
-    // --------------------------------------------------
-    // State
-    // --------------------------------------------------
+    event TrustTierChanged(
+        uint8 previousTier,
+        uint8 newTier
+    );
+
+    // ============================================================
+    // CORE STATE
+    // ============================================================
 
     address public owner;
     address public agent;
@@ -76,6 +94,9 @@ contract AgentVault {
     uint256 public expiry;
 
     uint256 public perTransactionMax;
+
+    // Owner-defined maximum daily limit.
+    // 0 means no explicit owner cap.
     uint256 public dailyLimit;
 
     uint256 public spentToday;
@@ -89,288 +110,433 @@ contract AgentVault {
 
     mapping(uint256 => Payment) public payments;
 
-    // --------------------------------------------------
-    // Constructor
-    // --------------------------------------------------
+    // ============================================================
+    // TRUST TIER STATE
+    // ============================================================
 
-    constructor(address _agent, uint256 _expiry) {
+    uint8 public trustTier;
+
+    uint8 public maxTrustTier;
+
+    uint256 public cleanPayments;
+
+    // Number of clean payments required to move to next tier.
+    uint256 public paymentsToNextTier;
+
+    // Tier-specific daily limits.
+    mapping(uint8 => uint256) public tierDailyLimit;
+
+    // ============================================================
+    // REENTRANCY
+    // ============================================================
+
+    bool private locked;
+
+    // ============================================================
+    // CONSTRUCTOR
+    // ============================================================
+
+    constructor(
+        address _agent,
+        uint256 _expiry
+    ) {
+        require(
+            _agent != address(0),
+            "Invalid agent"
+        );
+
         owner = msg.sender;
         agent = _agent;
         expiry = _expiry;
 
-        spendingDay = block.timestamp / 1 days;
+        spendingDay =
+            block.timestamp / 1 days;
+
+        // Trust-tier implementation choices.
+        //
+        // Tier 0 = 100
+        // Tier 1 = 250
+        // Tier 2 = 500
+        // Tier 3 = 1000
+        //
+        // Owner can change these values.
+        maxTrustTier = 3;
+        paymentsToNextTier = 3;
+
+        tierDailyLimit[0] = 100;
+        tierDailyLimit[1] = 250;
+        tierDailyLimit[2] = 500;
+        tierDailyLimit[3] = 1000;
+
+        trustTier = 0;
     }
 
-    // --------------------------------------------------
-    // Modifiers
-    // --------------------------------------------------
+    // ============================================================
+    // MODIFIERS
+    // ============================================================
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
+        require(
+            msg.sender == owner,
+            "Not owner"
+        );
         _;
     }
 
     modifier onlyAgent() {
-        require(msg.sender == agent, "Not agent");
+        require(
+            msg.sender == agent,
+            "Not agent"
+        );
         _;
     }
 
-    // --------------------------------------------------
-    // Owner configuration
-    // --------------------------------------------------
+    modifier nonReentrant() {
+        require(
+            !locked,
+            "Reentrancy"
+        );
 
-    function pause() external onlyOwner {
+        locked = true;
+        _;
+        locked = false;
+    }
+
+    // ============================================================
+    // OWNER CONFIGURATION
+    // ============================================================
+
+    function pause()
+        external
+        onlyOwner
+    {
         paused = true;
     }
 
-    function unpause() external onlyOwner {
+    function unpause()
+        external
+        onlyOwner
+    {
         paused = false;
     }
 
-    function setPerTransactionMax(uint256 _max) external onlyOwner {
+    function setPerTransactionMax(
+        uint256 _max
+    )
+        external
+        onlyOwner
+    {
         perTransactionMax = _max;
     }
 
-    function setDailyLimit(uint256 _limit) external onlyOwner {
+    function setDailyLimit(
+        uint256 _limit
+    )
+        external
+        onlyOwner
+    {
         dailyLimit = _limit;
     }
 
-    function setApprovalThreshold(uint256 _threshold) external onlyOwner {
+    function setApprovalThreshold(
+        uint256 _threshold
+    )
+        external
+        onlyOwner
+    {
         approvalThreshold = _threshold;
     }
 
     function setRecipientApproval(
         address recipient,
         bool approved
-    ) external onlyOwner {
+    )
+        external
+        onlyOwner
+    {
         approvedRecipient[recipient] = approved;
     }
 
     function setRecipientCap(
         address recipient,
         uint256 cap
-    ) external onlyOwner {
+    )
+        external
+        onlyOwner
+    {
         recipientCap[recipient] = cap;
     }
 
-    // --------------------------------------------------
-    // Vault status
-    // --------------------------------------------------
+    // ============================================================
+    // TRUST-TIER CONFIGURATION
+    // ============================================================
 
-    function isActive() public view returns (bool) {
+    function setMaxTrustTier(
+        uint8 _maxTier
+    )
+        external
+        onlyOwner
+    {
+        require(
+            _maxTier <= 10,
+            "Tier too high"
+        );
+
+        maxTrustTier = _maxTier;
+
+        if (trustTier > maxTrustTier) {
+            uint8 previousTier = trustTier;
+            trustTier = maxTrustTier;
+
+            emit TrustTierChanged(
+                previousTier,
+                trustTier
+            );
+        }
+    }
+
+    function setPaymentsToNextTier(
+        uint256 _payments
+    )
+        external
+        onlyOwner
+    {
+        require(
+            _payments > 0,
+            "Invalid payment count"
+        );
+
+        paymentsToNextTier = _payments;
+    }
+
+    function setTierDailyLimit(
+        uint8 tier,
+        uint256 limit
+    )
+        external
+        onlyOwner
+    {
+        require(
+            tier <= 10,
+            "Tier too high"
+        );
+
+        tierDailyLimit[tier] = limit;
+    }
+
+    // ============================================================
+    // VAULT STATUS
+    // ============================================================
+
+    function isActive()
+        public
+        view
+        returns (bool)
+    {
         if (paused) {
             return false;
         }
 
-        if (expiry != 0 && block.timestamp >= expiry) {
+        if (
+            expiry != 0 &&
+            block.timestamp >= expiry
+        ) {
             return false;
         }
 
         return true;
     }
 
-    // --------------------------------------------------
-    // Payment request
-    // --------------------------------------------------
+    // ============================================================
+    // VAULT BALANCE
+    // ============================================================
+
+    function getVaultBalance()
+        public
+        view
+        returns (uint256)
+    {
+        return address(this).balance;
+    }
+
+    receive()
+        external
+        payable
+    {}
+
+    // ============================================================
+    // EFFECTIVE DAILY LIMIT
+    // ============================================================
+
+    function getEffectiveDailyLimit()
+        public
+        view
+        returns (uint256)
+    {
+        uint256 tierLimit =
+            tierDailyLimit[trustTier];
+
+        if (
+            dailyLimit == 0
+        ) {
+            return tierLimit;
+        }
+
+        if (
+            tierLimit == 0
+        ) {
+            return dailyLimit;
+        }
+
+        if (
+            dailyLimit < tierLimit
+        ) {
+            return dailyLimit;
+        }
+
+        return tierLimit;
+    }
+
+    // ============================================================
+    // PAYMENT
+    // ============================================================
 
     function pay(
         address recipient,
         uint256 amount,
         bytes32 receiptHash
-    ) external returns (Status status, Reason reason) {
+    )
+        external
+        onlyAgent
+        nonReentrant
+        returns (
+            Status status,
+            Reason reason
+        )
+    {
+        // --------------------------------------------------------
+        // 1. Vault active
+        // --------------------------------------------------------
 
-        // 1. Authorization
-        if (msg.sender != agent) {
-            uint256 id = nextPaymentId++;
-
-            emit Blocked(
-                id,
-                recipient,
-                amount,
-                Reason.NotAuthorized,
-                receiptHash
-            );
-
-            emit PaymentDecision(
-                msg.sender,
-                recipient,
-                amount,
-                Status.Blocked,
-                Reason.NotAuthorized,
-                receiptHash
-            );
-
-            return (Status.Blocked, Reason.NotAuthorized);
-        }
-
-        // 2. Vault active
         if (paused) {
-            uint256 id = nextPaymentId++;
-
-            emit Blocked(
-                id,
+            return _blockPayment(
                 recipient,
                 amount,
                 Reason.VaultPaused,
                 receiptHash
             );
-
-            emit PaymentDecision(
-                msg.sender,
-                recipient,
-                amount,
-                Status.Blocked,
-                Reason.VaultPaused,
-                receiptHash
-            );
-
-            return (Status.Blocked, Reason.VaultPaused);
         }
 
-        if (expiry != 0 && block.timestamp >= expiry) {
-            uint256 id = nextPaymentId++;
-
-            emit Blocked(
-                id,
+        if (
+            expiry != 0 &&
+            block.timestamp >= expiry
+        ) {
+            return _blockPayment(
                 recipient,
                 amount,
                 Reason.VaultExpired,
                 receiptHash
             );
-
-            emit PaymentDecision(
-                msg.sender,
-                recipient,
-                amount,
-                Status.Blocked,
-                Reason.VaultExpired,
-                receiptHash
-            );
-
-            return (Status.Blocked, Reason.VaultExpired);
         }
 
-        // 3. Recipient allowlist
-        if (!approvedRecipient[recipient]) {
-            uint256 id = nextPaymentId++;
+        // --------------------------------------------------------
+        // 2. Recipient allowlist
+        // --------------------------------------------------------
 
-            emit Blocked(
-                id,
+        if (
+            !approvedRecipient[recipient]
+        ) {
+            return _blockPayment(
                 recipient,
                 amount,
                 Reason.RecipientNotAllowed,
                 receiptHash
             );
-
-            emit PaymentDecision(
-                msg.sender,
-                recipient,
-                amount,
-                Status.Blocked,
-                Reason.RecipientNotAllowed,
-                receiptHash
-            );
-
-            return (Status.Blocked, Reason.RecipientNotAllowed);
         }
 
-        // 4. Per-transaction maximum
+        // --------------------------------------------------------
+        // 3. Per-transaction maximum
+        // --------------------------------------------------------
+
         if (
             perTransactionMax != 0 &&
             amount > perTransactionMax
         ) {
-            uint256 id = nextPaymentId++;
-
-            emit Blocked(
-                id,
+            return _blockPayment(
                 recipient,
                 amount,
                 Reason.ExceedsTransactionMaximum,
                 receiptHash
-            );
-
-            emit PaymentDecision(
-                msg.sender,
-                recipient,
-                amount,
-                Status.Blocked,
-                Reason.ExceedsTransactionMaximum,
-                receiptHash
-            );
-
-            return (
-                Status.Blocked,
-                Reason.ExceedsTransactionMaximum
             );
         }
 
-        // 5. Daily spending limit
-        uint256 currentSpent = getSpentToday();
+        // --------------------------------------------------------
+        // 4. Daily limit
+        // --------------------------------------------------------
+
+        uint256 currentSpent =
+            getSpentToday();
+
+        uint256 effectiveLimit =
+            getEffectiveDailyLimit();
 
         if (
-            dailyLimit != 0 &&
-            currentSpent + amount > dailyLimit
+            effectiveLimit != 0 &&
+            currentSpent + amount >
+            effectiveLimit
         ) {
-            uint256 id = nextPaymentId++;
-
-            emit Blocked(
-                id,
+            return _blockPayment(
                 recipient,
                 amount,
                 Reason.ExceedsDailyLimit,
                 receiptHash
             );
-
-            emit PaymentDecision(
-                msg.sender,
-                recipient,
-                amount,
-                Status.Blocked,
-                Reason.ExceedsDailyLimit,
-                receiptHash
-            );
-
-            return (
-                Status.Blocked,
-                Reason.ExceedsDailyLimit
-            );
         }
 
-        // 6. Per-recipient cap
-        uint256 cap = recipientCap[recipient];
+        // --------------------------------------------------------
+        // 5. Per-recipient cap
+        // --------------------------------------------------------
 
-        if (cap != 0 && amount > cap) {
-            uint256 id = nextPaymentId++;
+        uint256 cap =
+            recipientCap[recipient];
 
-            emit Blocked(
-                id,
+        if (
+            cap != 0 &&
+            amount > cap
+        ) {
+            return _blockPayment(
                 recipient,
                 amount,
                 Reason.ExceedsRecipientCap,
                 receiptHash
             );
+        }
 
-            emit PaymentDecision(
-                msg.sender,
+        // --------------------------------------------------------
+        // 6. Vault balance
+        // --------------------------------------------------------
+
+        if (
+            address(this).balance < amount
+        ) {
+            return _blockPayment(
                 recipient,
                 amount,
-                Status.Blocked,
-                Reason.ExceedsRecipientCap,
+                Reason.InsufficientBalance,
                 receiptHash
-            );
-
-            return (
-                Status.Blocked,
-                Reason.ExceedsRecipientCap
             );
         }
 
+        // --------------------------------------------------------
         // 7. Approval threshold
+        // --------------------------------------------------------
+
         if (
             approvalThreshold != 0 &&
             amount > approvalThreshold
         ) {
-            uint256 id = nextPaymentId++;
+            uint256 id =
+                nextPaymentId++;
 
             payments[id] = Payment({
                 recipient: recipient,
@@ -401,10 +567,26 @@ contract AgentVault {
             );
         }
 
-        // 8. Allowed payment
+        // --------------------------------------------------------
+        // 8. Immediate payment
+        // --------------------------------------------------------
+
+        uint256 allowedId =
+            nextPaymentId++;
+
+        (
+            bool success,
+        ) = payable(recipient).call{
+            value: amount
+        }("");
+
+        if (!success) {
+            revert("Transfer failed");
+        }
+
         _recordSpending(amount);
 
-        uint256 allowedId = nextPaymentId++;
+        _recordCleanPayment();
 
         payments[allowedId] = Payment({
             recipient: recipient,
@@ -435,24 +617,68 @@ contract AgentVault {
         );
     }
 
-    // --------------------------------------------------
-    // Pending payment management
-    // --------------------------------------------------
+    // ============================================================
+    // APPROVE PENDING PAYMENT
+    // ============================================================
 
     function approvePayment(
         uint256 id
-    ) external onlyOwner {
-
-        Payment storage payment = payments[id];
+    )
+        external
+        onlyOwner
+        nonReentrant
+    {
+        Payment storage payment =
+            payments[id];
 
         require(
             payment.status == Status.Pending,
             "Not pending"
         );
 
-        payment.status = Status.Allowed;
+        require(
+            isActive(),
+            "Vault inactive"
+        );
 
-        _recordSpending(payment.amount);
+        require(
+            address(this).balance >=
+            payment.amount,
+            "Insufficient balance"
+        );
+
+        uint256 currentSpent =
+            getSpentToday();
+
+        uint256 effectiveLimit =
+            getEffectiveDailyLimit();
+
+        require(
+            effectiveLimit == 0 ||
+            currentSpent + payment.amount <=
+            effectiveLimit,
+            "Daily limit exceeded"
+        );
+
+        payment.status =
+            Status.Allowed;
+
+        (
+            bool success,
+        ) = payable(payment.recipient).call{
+            value: payment.amount
+        }("");
+
+        require(
+            success,
+            "Transfer failed"
+        );
+
+        _recordSpending(
+            payment.amount
+        );
+
+        _recordCleanPayment();
 
         emit PendingApproved(id);
 
@@ -464,18 +690,28 @@ contract AgentVault {
         );
     }
 
+    // ============================================================
+    // REJECT PENDING PAYMENT
+    // ============================================================
+
     function rejectPayment(
         uint256 id
-    ) external onlyOwner {
-
-        Payment storage payment = payments[id];
+    )
+        external
+        onlyOwner
+    {
+        Payment storage payment =
+            payments[id];
 
         require(
             payment.status == Status.Pending,
             "Not pending"
         );
 
-        payment.status = Status.Blocked;
+        payment.status =
+            Status.Blocked;
+
+        _resetTrustTier();
 
         emit PendingRejected(id);
 
@@ -488,9 +724,9 @@ contract AgentVault {
         );
     }
 
-    // --------------------------------------------------
-    // Payment information
-    // --------------------------------------------------
+    // ============================================================
+    // PAYMENT INFORMATION
+    // ============================================================
 
     function getPayment(
         uint256 id
@@ -504,7 +740,8 @@ contract AgentVault {
             Status status
         )
     {
-        Payment memory payment = payments[id];
+        Payment memory payment =
+            payments[id];
 
         return (
             payment.recipient,
@@ -514,9 +751,9 @@ contract AgentVault {
         );
     }
 
-    // --------------------------------------------------
-    // Daily spending
-    // --------------------------------------------------
+    // ============================================================
+    // DAILY SPENDING
+    // ============================================================
 
     function getSpentToday()
         public
@@ -524,7 +761,8 @@ contract AgentVault {
         returns (uint256)
     {
         if (
-            block.timestamp / 1 days != spendingDay
+            block.timestamp / 1 days !=
+            spendingDay
         ) {
             return 0;
         }
@@ -534,16 +772,114 @@ contract AgentVault {
 
     function _recordSpending(
         uint256 amount
-    ) internal {
-
+    )
+        internal
+    {
         uint256 currentDay =
             block.timestamp / 1 days;
 
-        if (currentDay != spendingDay) {
+        if (
+            currentDay != spendingDay
+        ) {
             spendingDay = currentDay;
             spentToday = 0;
         }
 
         spentToday += amount;
+    }
+
+    // ============================================================
+    // TRUST TIER
+    // ============================================================
+
+    function _recordCleanPayment()
+        internal
+    {
+        cleanPayments += 1;
+
+        if (
+            trustTier >= maxTrustTier
+        ) {
+            return;
+        }
+
+        if (
+            cleanPayments >=
+            paymentsToNextTier
+        ) {
+            cleanPayments = 0;
+
+            uint8 previousTier =
+                trustTier;
+
+            trustTier += 1;
+
+            emit TrustTierChanged(
+                previousTier,
+                trustTier
+            );
+        }
+    }
+
+    function _resetTrustTier()
+        internal
+    {
+        cleanPayments = 0;
+
+        if (trustTier != 0) {
+            uint8 previousTier =
+                trustTier;
+
+            trustTier = 0;
+
+            emit TrustTierChanged(
+                previousTier,
+                0
+            );
+        }
+    }
+
+    // ============================================================
+    // BLOCKED PAYMENT HELPER
+    // ============================================================
+
+    function _blockPayment(
+        address recipient,
+        uint256 amount,
+        Reason reason,
+        bytes32 receiptHash
+    )
+        internal
+        returns (
+            Status,
+            Reason
+        )
+    {
+        uint256 id =
+            nextPaymentId++;
+
+        emit Blocked(
+            id,
+            recipient,
+            amount,
+            reason,
+            receiptHash
+        );
+
+        emit PaymentDecision(
+            msg.sender,
+            recipient,
+            amount,
+            Status.Blocked,
+            reason,
+            receiptHash
+        );
+
+        _resetTrustTier();
+
+        return (
+            Status.Blocked,
+            reason
+        );
     }
 }
