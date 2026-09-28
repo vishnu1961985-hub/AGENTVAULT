@@ -1,294 +1,38 @@
-// AgentVault contract configuration
-//
-// IMPORTANT:
-// The contract is currently tested locally.
-// There is NO MST Testnet deployment address yet.
-//
-// Do not put a fake address here.
+import AgentVaultABI from "../../../abi/AgentVault.json";
+import { ethers } from "ethers";
 
-export const AGENT_VAULT_ADDRESS = "";
+export const AGENT_VAULT_ADDRESS =
+  "0x02e67C833C626506a86a750111a19a66140D8468";
 
-export const AGENT_VAULT_ABI = [
-  // ---------- READS ----------
+export const MST_TESTNET_CHAIN_ID = 91562037;
 
-  {
-    name: "owner",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "address" }],
-  },
+export const MST_TESTNET_RPC =
+  "https://testnetrpc.mstblockchain.com";
 
-  {
-    name: "agent",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "address" }],
-  },
+export const AGENT_VAULT_ABI = AgentVaultABI;
 
-  {
-    name: "paused",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "bool" }],
-  },
+export const MSTSCAN_TX_BASE_URL =
+  "https://testnet.mstscan.com/tx/";
 
-  {
-    name: "expiry",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
+export const AGENT_VAULT_CREATION_TX =
+  "0x22373da87d8c1606a86e4319f045cc1d30ec43a31b5bb1af810bcc3fe35a068d";
 
-  {
-    name: "perTransactionMax",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-
-  {
-    name: "dailyLimit",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-
-  {
-    name: "spentToday",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-
-  {
-    name: "spendingDay",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-
-  {
-    name: "approvalThreshold",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-
-  {
-    name: "nextPaymentId",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-
-  {
-    name: "approvedRecipient",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "recipient", type: "address" }],
-    outputs: [{ name: "", type: "bool" }],
-  },
-
-  {
-    name: "recipientCap",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "recipient", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-
-  {
-    name: "isActive",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "bool" }],
-  },
-
-  {
-    name: "getSpentToday",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-
-  // ---------- OWNER WRITES ----------
-
-  {
-    name: "pause",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [],
-    outputs: [],
-  },
-
-  {
-    name: "unpause",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [],
-    outputs: [],
-  },
-
-  {
-    name: "setPerTransactionMax",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "value", type: "uint256" }],
-    outputs: [],
-  },
-
-  {
-    name: "setDailyLimit",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "value", type: "uint256" }],
-    outputs: [],
-  },
-
-  {
-    name: "setApprovalThreshold",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "value", type: "uint256" }],
-    outputs: [],
-  },
-
-  {
-    name: "setRecipientApproval",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "recipient", type: "address" },
-      { name: "approved", type: "bool" },
-    ],
-    outputs: [],
-  },
-
-  {
-    name: "setRecipientCap",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "recipient", type: "address" },
-      { name: "cap", type: "uint256" },
-    ],
-    outputs: [],
-  },
-
-  {
-    name: "approvePayment",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "id", type: "uint256" }],
-    outputs: [],
-  },
-
-  {
-    name: "rejectPayment",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "id", type: "uint256" }],
-    outputs: [],
-  },
-
-  // ---------- EVENTS ----------
-
-  {
-    name: "PaymentDecision",
-    type: "event",
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: "agent", type: "address" },
-      { indexed: true, name: "recipient", type: "address" },
-      { indexed: false, name: "amount", type: "uint256" },
-      { indexed: false, name: "status", type: "uint8" },
-      { indexed: false, name: "reason", type: "uint8" },
-      { indexed: false, name: "receiptHash", type: "bytes32" },
-    ],
-  },
-
-  {
-    name: "Allowed",
-    type: "event",
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: "id", type: "uint256" },
-      { indexed: true, name: "recipient", type: "address" },
-      { indexed: false, name: "amount", type: "uint256" },
-      { indexed: false, name: "receiptHash", type: "bytes32" },
-    ],
-  },
-
-  {
-    name: "Blocked",
-    type: "event",
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: "id", type: "uint256" },
-      { indexed: true, name: "recipient", type: "address" },
-      { indexed: false, name: "amount", type: "uint256" },
-      { indexed: false, name: "reason", type: "uint8" },
-      { indexed: false, name: "receiptHash", type: "bytes32" },
-    ],
-  },
-
-  {
-    name: "Pending",
-    type: "event",
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: "id", type: "uint256" },
-      { indexed: true, name: "recipient", type: "address" },
-      { indexed: false, name: "amount", type: "uint256" },
-      { indexed: false, name: "receiptHash", type: "bytes32" },
-    ],
-  },
-
-  {
-    name: "PendingApproved",
-    type: "event",
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: "id", type: "uint256" },
-    ],
-  },
-
-  {
-    name: "PendingRejected",
-    type: "event",
-    anonymous: false,
-    inputs: [
-      { indexed: true, name: "id", type: "uint256" },
-    ],
-  },
-];
-
-// Contract enum values supplied by Person 1.
 export const PAYMENT_STATUS = {
   ALLOWED: 0,
   BLOCKED: 1,
   PENDING: 2,
 };
 
-export const PAYMENT_REASON = {
-  NONE: 0,
-  NOT_AUTHORIZED: 1,
-  VAULT_PAUSED: 2,
-  VAULT_EXPIRED: 3,
-  RECIPIENT_NOT_ALLOWED: 4,
-  EXCEEDS_TRANSACTION_MAXIMUM: 5,
-  EXCEEDS_DAILY_LIMIT: 6,
-  EXCEEDS_RECIPIENT_CAP: 7,
-};
+export function getReadOnlyProvider() {
+  return new ethers.JsonRpcProvider(MST_TESTNET_RPC);
+}
+
+export function getAgentVaultContract() {
+  const provider = getReadOnlyProvider();
+
+  return new ethers.Contract(
+    AGENT_VAULT_ADDRESS,
+    AGENT_VAULT_ABI,
+    provider
+  );
+}
