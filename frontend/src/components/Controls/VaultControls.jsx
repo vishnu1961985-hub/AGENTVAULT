@@ -7,7 +7,7 @@ import {
   MST_TESTNET_RPC,
 } from "../../contracts/agentVault";
 
-export default function VaultControls() {
+export default function VaultControls({ wallet }) {
   const [paused, setPaused] = useState(null);
   const [owner, setOwner] = useState("");
   const [account, setAccount] = useState("");
@@ -46,6 +46,13 @@ export default function VaultControls() {
   async function connectAndCheckOwner() {
     setError("");
     setMessage("");
+
+    if (wallet?.account && wallet?.isOwner && wallet?.isCorrectNetwork) {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      setAccount(wallet.account);
+      setOwner(wallet.owner);
+      return provider;
+    }
 
     if (!window.ethereum?.isBridgeKey) {
       throw new Error("BridgeKey wallet not detected.");
@@ -147,11 +154,7 @@ export default function VaultControls() {
     }
   }
 
-  const ownerConnected =
-    account &&
-    owner &&
-    account.toLowerCase() ===
-      owner.toLowerCase();
+  const ownerConnected = Boolean(wallet?.isOwner ?? (account && owner && account.toLowerCase() === owner.toLowerCase()));
 
   return (
     <section className="authority-console">
@@ -216,7 +219,8 @@ export default function VaultControls() {
             }
             disabled={
               loading ||
-              paused === true
+              paused === true ||
+              !ownerConnected
             }
           >
             <span>PAUSE VAULT</span>
@@ -234,7 +238,8 @@ export default function VaultControls() {
             }
             disabled={
               loading ||
-              paused === false
+              paused === false ||
+              !ownerConnected
             }
           >
             <span>RESUME VAULT</span>
@@ -268,7 +273,9 @@ export default function VaultControls() {
             <strong>
               {ownerConnected
                 ? "AUTHORIZED"
-                : "NOT CONNECTED"}
+                : wallet?.account
+                  ? "VIEW ONLY"
+                  : "NOT CONNECTED"}
             </strong>
           </div>
 

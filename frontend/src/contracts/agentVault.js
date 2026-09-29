@@ -1,8 +1,9 @@
 import AgentVaultABI from "../../../abi/AgentVault.json";
 import { ethers } from "ethers";
 
+// Authoritative live-demo vault from scripts/setup-live-demo.ts.
 export const AGENT_VAULT_ADDRESS =
-  "0x02e67C833C626506a86a750111a19a66140D8468";
+  "0x746392d55268c859cBf16bcc8b7902615D2be8b1";
 
 export const MST_TESTNET_CHAIN_ID = 91562037;
 
@@ -28,11 +29,9 @@ export function getReadOnlyProvider() {
 }
 
 export function getAgentVaultContract() {
-  const provider = getReadOnlyProvider();
-
   return new ethers.Contract(
     AGENT_VAULT_ADDRESS,
     AGENT_VAULT_ABI,
-    provider
+    getReadOnlyProvider()
   );
 }

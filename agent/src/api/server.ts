@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { keccak256, toUtf8Bytes } from "ethers";
+import { isAddress, keccak256, toUtf8Bytes } from "ethers";
 import { createServer } from "node:http";
 import type {
   IncomingMessage,
@@ -13,8 +13,8 @@ dotenv.config({ path: "agent/.env" });
 const vaultAddress = process.env.AGENTVAULT_ADDRESS;
 const agentPrivateKey = process.env.AGENT_PRIVATE_KEY;
 
-if (!vaultAddress) {
-  throw new Error("AGENTVAULT_ADDRESS is not configured");
+if (!vaultAddress || !isAddress(vaultAddress)) {
+  throw new Error("AGENTVAULT_ADDRESS must be a valid EVM address");
 }
 
 if (!agentPrivateKey) {
@@ -197,10 +197,10 @@ const server = createServer(
           return;
         }
 
-        if (!/^\d+$/.test(body.amount)) {
+        if (!/^\d+$/.test(body.amount) || body.amount === "0") {
           sendJson(response, 400, {
             error:
-              "amount must be a non-negative integer string",
+              "amount must be a positive integer string in MST base units",
           });
           return;
         }
