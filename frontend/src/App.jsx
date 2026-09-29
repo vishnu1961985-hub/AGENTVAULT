@@ -133,7 +133,7 @@ function App() {
 
                 <div>
                   <small>POLICY</small>
-                  <strong>ENFORCED</strong>
+                  <strong>{system.paused === null ? "READING" : system.paused ? "PAUSED" : "ENFORCED"}</strong>
                 </div>
               </div>
             </div>
