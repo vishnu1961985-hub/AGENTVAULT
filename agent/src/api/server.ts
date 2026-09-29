@@ -63,10 +63,13 @@ const server = createServer(
         request.url === "/api/health"
       ) {
         const agent = await agentService.getAgentAddress();
+        const vaultAgent = await agentService.getVaultAgent();
+        const ready = agent.toLowerCase() === vaultAgent.toLowerCase();
 
-        sendJson(response, 200, {
-          status: "READY",
+        sendJson(response, ready ? 200 : 503, {
+          status: ready ? "READY" : "AGENT_MISMATCH",
           agent,
+          vaultAgent,
           vault: vaultAddress,
         });
 
