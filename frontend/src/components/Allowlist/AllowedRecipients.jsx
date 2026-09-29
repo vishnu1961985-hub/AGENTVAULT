@@ -8,7 +8,10 @@ import {
 } from "../../contracts/agentVault";
 
 function getReadOnlyContract() {
-  const provider = new ethers.JsonRpcProvider(MST_TESTNET_RPC);
+  const provider =
+    new ethers.JsonRpcProvider(
+      MST_TESTNET_RPC
+    );
 
   return new ethers.Contract(
     AGENT_VAULT_ADDRESS,
@@ -17,69 +20,116 @@ function getReadOnlyContract() {
   );
 }
 
+function shortAddress(address) {
+  if (!address) return "—";
+
+  return `${address.slice(
+    0,
+    8
+  )}...${address.slice(-6)}`;
+}
+
 export default function AllowedRecipients() {
-  const [recipient, setRecipient] = useState("");
-  const [approved, setApproved] = useState(null);
-  const [cap, setCap] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [recipient, setRecipient] =
+    useState("");
 
-  async function getOwnerContract() {
-    if (!window.ethereum) {
-      throw new Error("BridgeKey wallet not detected.");
-    }
+  const [approved, setApproved] =
+    useState(null);
 
-    if (!window.ethereum.isBridgeKey) {
-      throw new Error("Please use BridgeKey.");
-    }
+  const [cap, setCap] =
+    useState("");
 
-    const chainId = await window.ethereum.request({
-      method: "eth_chainId",
-    });
+  const [loading, setLoading] =
+    useState(false);
 
-    const numericChainId = parseInt(chainId, 16);
+  const [saving, setSaving] =
+    useState(false);
 
-    if (numericChainId !== MST_TESTNET_CHAIN_ID) {
-      throw new Error("Please switch BridgeKey to MST Testnet.");
-    }
-
-    const accounts = await window.ethereum.request({
-      method: "eth_requestAccounts",
-    });
-
-    if (!accounts.length) {
-      throw new Error("Please connect BridgeKey.");
-    }
-
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-
-    const vault = new ethers.Contract(
-      AGENT_VAULT_ADDRESS,
-      AGENT_VAULT_ABI,
-      signer
-    );
-
-    const owner = await vault.owner();
-
-    if (owner.toLowerCase() !== accounts[0].toLowerCase()) {
-      throw new Error("Connected wallet is not the vault owner.");
-    }
-
-    return vault;
-  }
+  const [message, setMessage] =
+    useState("");
 
   function validateRecipient() {
     if (!recipient.trim()) {
-      throw new Error("Enter a recipient address.");
+      throw new Error(
+        "Enter a recipient address."
+      );
     }
 
-    if (!ethers.isAddress(recipient.trim())) {
-      throw new Error("Enter a valid Ethereum address.");
+    if (
+      !ethers.isAddress(
+        recipient.trim()
+      )
+    ) {
+      throw new Error(
+        "Enter a valid Ethereum address."
+      );
     }
 
-    return ethers.getAddress(recipient.trim());
+    return ethers.getAddress(
+      recipient.trim()
+    );
+  }
+
+  async function getOwnerContract() {
+    if (!window.ethereum?.isBridgeKey) {
+      throw new Error(
+        "BridgeKey wallet not detected."
+      );
+    }
+
+    const chainId =
+      await window.ethereum.request({
+        method: "eth_chainId",
+      });
+
+    if (
+      parseInt(chainId, 16) !==
+      MST_TESTNET_CHAIN_ID
+    ) {
+      throw new Error(
+        "Please switch BridgeKey to MST Testnet."
+      );
+    }
+
+    const accounts =
+      await window.ethereum.request({
+        method: "eth_requestAccounts",
+      });
+
+    if (!accounts[0]) {
+      throw new Error(
+        "Please connect BridgeKey."
+      );
+    }
+
+    const provider =
+      new ethers.BrowserProvider(
+        window.ethereum
+      );
+
+    const signer =
+      await provider.getSigner();
+
+    const vault =
+      new ethers.Contract(
+        AGENT_VAULT_ADDRESS,
+        AGENT_VAULT_ABI,
+        signer
+      );
+
+    const owner =
+      await vault.owner();
+
+    if (
+      owner.toLowerCase() !==
+      accounts[0].toLowerCase()
+    ) {
+      throw new Error(
+        "Connected wallet is not the vault owner."
+      );
+    }
+
+    return vault;
   }
 
   async function checkRecipient() {
@@ -87,20 +137,34 @@ export default function AllowedRecipients() {
       setLoading(true);
       setMessage("");
 
-      const address = validateRecipient();
-      const vault = getReadOnlyContract();
+      const address =
+        validateRecipient();
 
-      const [isApproved, recipientCap] = await Promise.all([
-        vault.approvedRecipient(address),
-        vault.recipientCap(address),
+      const vault =
+        getReadOnlyContract();
+
+      const [
+        isApproved,
+        recipientCap,
+      ] = await Promise.all([
+        vault.approvedRecipient(
+          address
+        ),
+        vault.recipientCap(
+          address
+        ),
       ]);
 
       setApproved(isApproved);
-      setCap(recipientCap.toString());
+      setCap(
+        recipientCap.toString()
+      );
 
-      setMessage("Recipient details loaded from AgentVault.");
+      setMessage(
+        "Recipient policy loaded from AgentVault."
+      );
     } catch (error) {
-      console.error("Failed to check recipient:", error);
+      console.error(error);
 
       setApproved(null);
       setCap("");
@@ -109,7 +173,7 @@ export default function AllowedRecipients() {
         error?.shortMessage ||
           error?.reason ||
           error?.message ||
-          "Could not read recipient details."
+          "Could not read recipient policy."
       );
     } finally {
       setLoading(false);
@@ -121,21 +185,21 @@ export default function AllowedRecipients() {
       setSaving(true);
       setMessage("");
 
-      const address = validateRecipient();
-      const vault = await getOwnerContract();
+      const address =
+        validateRecipient();
+
+      const vault =
+        await getOwnerContract();
+
+      const tx =
+        await vault.setRecipientApproval(
+          address,
+          value
+        );
 
       setMessage(
-        value
-          ? "Approving recipient..."
-          : "Removing recipient approval..."
+        "Confirming recipient authorization..."
       );
-
-      const tx = await vault.setRecipientApproval(
-        address,
-        value
-      );
-
-      setMessage("Waiting for transaction confirmation...");
 
       await tx.wait();
 
@@ -143,17 +207,17 @@ export default function AllowedRecipients() {
 
       setMessage(
         value
-          ? "Recipient approved successfully."
-          : "Recipient approval removed successfully."
+          ? "Recipient authorization enabled."
+          : "Recipient authorization removed."
       );
     } catch (error) {
-      console.error("Failed to update recipient approval:", error);
+      console.error(error);
 
       setMessage(
         error?.shortMessage ||
           error?.reason ||
           error?.message ||
-          "Failed to update recipient approval."
+          "Recipient update failed."
       );
     } finally {
       setSaving(false);
@@ -165,44 +229,45 @@ export default function AllowedRecipients() {
       setSaving(true);
       setMessage("");
 
-      const address = validateRecipient();
+      const address =
+        validateRecipient();
 
-      if (cap.trim() === "") {
-        throw new Error("Enter a recipient cap.");
-      }
-
-      if (!/^\d+$/.test(cap.trim())) {
+      if (
+        !/^\d+$/.test(
+          cap.trim()
+        )
+      ) {
         throw new Error(
           "Recipient cap must be a whole number."
         );
       }
 
-      const capValue = BigInt(cap.trim());
+      const vault =
+        await getOwnerContract();
 
-      const vault = await getOwnerContract();
+      const tx =
+        await vault.setRecipientCap(
+          address,
+          BigInt(cap.trim())
+        );
 
-      setMessage("Updating recipient cap...");
-
-      const tx = await vault.setRecipientCap(
-        address,
-        capValue
+      setMessage(
+        "Confirming recipient cap..."
       );
-
-      setMessage("Waiting for transaction confirmation...");
 
       await tx.wait();
 
       setMessage(
-        "Recipient cap updated successfully."
+        "Recipient cap updated."
       );
     } catch (error) {
-      console.error("Failed to update recipient cap:", error);
+      console.error(error);
 
       setMessage(
         error?.shortMessage ||
           error?.reason ||
           error?.message ||
-          "Failed to update recipient cap."
+          "Recipient cap update failed."
       );
     } finally {
       setSaving(false);
@@ -210,126 +275,220 @@ export default function AllowedRecipients() {
   }
 
   return (
-    <section className="panel">
-      <div className="panel-header">
+    <section className="recipient-command-center">
+
+      <div className="recipient-header">
         <div>
-          <p className="eyebrow">RECIPIENT CONTROL</p>
-          <h2>Allowed Recipients</h2>
+          <div className="section-kicker">
+            <span className="pulse-dot" />
+            RECIPIENT SECURITY
+          </div>
+
+          <h2>Authorization Registry</h2>
+
+          <p>
+            Autonomous payments can only reach recipients
+            explicitly authorized by the vault owner.
+          </p>
+        </div>
+
+        <div className="registry-badge">
+          <span>ALLOWLIST</span>
+          <strong>ENFORCED</strong>
         </div>
       </div>
 
-      <p className="rules-description">
-        Check and manage recipient approval and the
-        per-recipient spending cap stored on AgentVault.
-        Owner changes require BridgeKey approval.
-      </p>
+      <div className="recipient-body">
 
-      <div className="recipient-editor">
+        <div className="recipient-search">
 
-        <div className="recipient-input-row">
-          <label htmlFor="recipient-address">
-            Recipient address
-          </label>
+          <div className="search-label">
+            <span>RECIPIENT ADDRESS</span>
+            <small>ON-CHAIN LOOKUP</small>
+          </div>
 
-          <input
-            id="recipient-address"
-            type="text"
-            placeholder="0x..."
-            value={recipient}
-            onChange={(event) => {
-              setRecipient(event.target.value);
-              setApproved(null);
-              setCap("");
-              setMessage("");
-            }}
-          />
+          <div className="address-input">
+            <span className="address-prefix">
+              0x
+            </span>
 
-          <button
-            disabled={loading || saving}
-            onClick={checkRecipient}
-          >
-            {loading ? "Checking..." : "Check"}
-          </button>
+            <input
+              type="text"
+              placeholder="Enter recipient address..."
+              value={recipient}
+              onChange={(event) => {
+                setRecipient(
+                  event.target.value
+                );
+                setApproved(null);
+                setCap("");
+                setMessage("");
+              }}
+            />
+
+            <button
+              onClick={checkRecipient}
+              disabled={
+                loading ||
+                saving ||
+                !recipient.trim()
+              }
+            >
+              {loading
+                ? "READING..."
+                : "INSPECT"}
+            </button>
+          </div>
+
         </div>
 
         {approved !== null && (
-          <div className="recipient-status">
-            <div>
-              <span>Approval status</span>
+          <div className="recipient-inspection">
 
+            <div className="recipient-identity">
+              <span>INSPECTED RECIPIENT</span>
               <strong>
-                {approved
-                  ? "Approved"
-                  : "Not approved"}
+                {shortAddress(
+                  recipient
+                )}
               </strong>
             </div>
 
-            <div>
-              <span>Recipient cap</span>
+            <div
+              className={`authorization-state ${
+                approved
+                  ? "authorized"
+                  : "restricted"
+              }`}
+            >
+              <span className="state-dot" />
+
+              <div>
+                <small>
+                  AUTHORIZATION
+                </small>
+
+                <strong>
+                  {approved
+                    ? "AUTHORIZED"
+                    : "RESTRICTED"}
+                </strong>
+              </div>
+            </div>
+
+            <div className="recipient-cap-display">
+              <span>
+                PER-RECIPIENT CAP
+              </span>
 
               <strong>
-                {cap || "0"} MST
+                {cap || "0"}
+                <small> MST</small>
               </strong>
             </div>
+
           </div>
         )}
 
-        <div className="recipient-actions">
-          <button
-            disabled={saving || !recipient.trim()}
-            onClick={() => setApproval(true)}
-          >
-            Approve Recipient
-          </button>
+        <div className="recipient-command-grid">
 
-          <button
-            disabled={saving || !recipient.trim()}
-            onClick={() => setApproval(false)}
-          >
-            Remove Approval
-          </button>
-        </div>
-
-        <div className="recipient-cap-row">
-          <div>
-            <label htmlFor="recipient-cap">
-              Recipient spending cap
-            </label>
-
-            <span>
-              Whole MST units
+          <div className="recipient-command-card">
+            <span className="command-number">
+              01
             </span>
+
+            <div>
+              <h3>Authorization</h3>
+              <p>
+                Decide whether the agent may send
+                payments to this recipient.
+              </p>
+            </div>
+
+            <div className="command-actions">
+              <button
+                className="approve-recipient"
+                disabled={
+                  saving ||
+                  !recipient.trim()
+                }
+                onClick={() =>
+                  setApproval(true)
+                }
+              >
+                AUTHORIZE
+              </button>
+
+              <button
+                className="remove-recipient"
+                disabled={
+                  saving ||
+                  !recipient.trim()
+                }
+                onClick={() =>
+                  setApproval(false)
+                }
+              >
+                RESTRICT
+              </button>
+            </div>
           </div>
 
-          <input
-            id="recipient-cap"
-            type="number"
-            min="0"
-            step="1"
-            value={cap}
-            onChange={(event) =>
-              setCap(event.target.value)
-            }
-          />
+          <div className="recipient-command-card">
+            <span className="command-number">
+              02
+            </span>
 
-          <button
-            disabled={
-              saving ||
-              !recipient.trim() ||
-              cap.trim() === ""
-            }
-            onClick={saveRecipientCap}
-          >
-            Save Cap
-          </button>
+            <div>
+              <h3>Spending Boundary</h3>
+              <p>
+                Set the maximum amount that can be
+                spent on this recipient.
+              </p>
+            </div>
+
+            <div className="cap-editor">
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={cap}
+                onChange={(event) =>
+                  setCap(
+                    event.target.value
+                  )
+                }
+                placeholder="0"
+              />
+
+              <span>MST</span>
+
+              <button
+                disabled={
+                  saving ||
+                  !recipient.trim() ||
+                  !cap.trim()
+                }
+                onClick={
+                  saveRecipientCap
+                }
+              >
+                SAVE CAP
+              </button>
+            </div>
+          </div>
+
         </div>
+
       </div>
 
       {message && (
-        <div className="rules-message">
+        <div className="recipient-message">
+          <span />
           {message}
         </div>
       )}
+
     </section>
   );
 }

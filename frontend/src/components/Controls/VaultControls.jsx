@@ -25,15 +25,16 @@ export default function VaultControls() {
         provider
       );
 
-      const [currentPaused, currentOwner] = await Promise.all([
-        vault.paused(),
-        vault.owner(),
-      ]);
+      const [currentPaused, currentOwner] =
+        await Promise.all([
+          vault.paused(),
+          vault.owner(),
+        ]);
 
       setPaused(currentPaused);
       setOwner(currentOwner);
     } catch (err) {
-      console.error("Failed to read vault control state:", err);
+      console.error(err);
       setError("Could not read vault control state.");
     }
   }
@@ -47,68 +48,67 @@ export default function VaultControls() {
     setMessage("");
 
     if (!window.ethereum?.isBridgeKey) {
-      setError("BridgeKey wallet not detected.");
-      return null;
+      throw new Error("BridgeKey wallet not detected.");
     }
 
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+    const provider = new ethers.BrowserProvider(
+      window.ethereum
+    );
 
-      const network = await provider.getNetwork();
+    const network = await provider.getNetwork();
 
-      if (network.chainId !== BigInt(MST_TESTNET_CHAIN_ID)) {
-        throw new Error(
-          "Please switch BridgeKey to MST Testnet before continuing."
-        );
-      }
-
-      const accounts = await provider.send("eth_requestAccounts", []);
-
-      const connectedAccount = accounts[0];
-
-      if (!connectedAccount) {
-        throw new Error("No wallet account connected.");
-      }
-
-      const vault = new ethers.Contract(
-        AGENT_VAULT_ADDRESS,
-        AGENT_VAULT_ABI,
-        provider
+    if (
+      network.chainId !==
+      BigInt(MST_TESTNET_CHAIN_ID)
+    ) {
+      throw new Error(
+        "Please switch BridgeKey to MST Testnet."
       );
-
-      const contractOwner = await vault.owner();
-
-      setAccount(connectedAccount);
-      setOwner(contractOwner);
-
-      if (
-        connectedAccount.toLowerCase() !== contractOwner.toLowerCase()
-      ) {
-        throw new Error(
-          "Connected wallet is not the AgentVault owner."
-        );
-      }
-
-      return provider;
-    } catch (err) {
-      setError(err.message || "Wallet check failed.");
-      return null;
     }
+
+    const accounts = await provider.send(
+      "eth_requestAccounts",
+      []
+    );
+
+    if (!accounts[0]) {
+      throw new Error("No wallet account connected.");
+    }
+
+    const vault = new ethers.Contract(
+      AGENT_VAULT_ADDRESS,
+      AGENT_VAULT_ABI,
+      provider
+    );
+
+    const contractOwner = await vault.owner();
+
+    setAccount(accounts[0]);
+    setOwner(contractOwner);
+
+    if (
+      accounts[0].toLowerCase() !==
+      contractOwner.toLowerCase()
+    ) {
+      throw new Error(
+        "Connected wallet is not the AgentVault owner."
+      );
+    }
+
+    return provider;
   }
 
   async function changePauseState(shouldPause) {
-    setError("");
-    setMessage("");
-    setLoading(true);
-
     try {
-      const provider = await connectAndCheckOwner();
+      setLoading(true);
+      setError("");
+      setMessage("");
 
-      if (!provider) {
-        return;
-      }
+      const provider =
+        await connectAndCheckOwner();
 
-      const signer = await provider.getSigner();
+      const signer =
+        await provider.getSigner();
 
       const vault = new ethers.Contract(
         AGENT_VAULT_ADDRESS,
@@ -116,24 +116,32 @@ export default function VaultControls() {
         signer
       );
 
-      const transaction = shouldPause
+      const tx = shouldPause
         ? await vault.pause()
         : await vault.unpause();
 
-      setMessage("Transaction submitted. Waiting for confirmation...");
+      setMessage(
+        "Authority transaction submitted. Waiting for confirmation..."
+      );
 
-      await transaction.wait();
+      await tx.wait();
 
       setMessage(
         shouldPause
-          ? "Vault paused successfully."
-          : "Vault unpaused successfully."
+          ? "Vault is now paused."
+          : "Vault is now active."
       );
 
       await loadVaultState();
     } catch (err) {
-      console.error("Vault control transaction failed:", err);
-      setError(err.message || "Transaction failed.");
+      console.error(err);
+
+      setError(
+        err?.shortMessage ||
+          err?.reason ||
+          err?.message ||
+          "Transaction failed."
+      );
     } finally {
       setLoading(false);
     }
@@ -142,62 +150,146 @@ export default function VaultControls() {
   const ownerConnected =
     account &&
     owner &&
-    account.toLowerCase() === owner.toLowerCase();
+    account.toLowerCase() ===
+      owner.toLowerCase();
 
   return (
-    <section className="panel danger-panel">
-      <div>
-        <p className="eyebrow">Vault Control</p>
+    <section className="authority-console">
 
-        <h3>Emergency Control</h3>
+      <div className="authority-header">
+        <div>
+          <div className="section-kicker">
+            <span className="pulse-dot" />
+            HUMAN OVERSIGHT
+          </div>
 
-        <p>
-          Pause prevents new agent payment activity. Only the AgentVault
-          owner can change this state.
-        </p>
+          <h2>Vault Authority</h2>
 
-        <span
-          className={`status-badge ${
-            paused === true ? "blocked" : "active"
+          <p>
+            The emergency control layer sits outside the autonomous
+            payment flow. The vault owner can immediately pause or
+            restore agent activity.
+          </p>
+        </div>
+
+        <div
+          className={`authority-state ${
+            paused ? "is-paused" : "is-active"
           }`}
         >
-          {paused === null
-            ? "Loading..."
-            : paused
-              ? "Vault Paused"
-              : "Vault Active"}
-        </span>
+          <span className="state-dot" />
+          <div>
+            <small>VAULT STATE</small>
+            <strong>
+              {paused === null
+                ? "READING"
+                : paused
+                  ? "PAUSED"
+                  : "ACTIVE"}
+            </strong>
+          </div>
+        </div>
       </div>
 
-      <div className="button-row">
-        <button
-          className="danger-button"
-          type="button"
-          onClick={() => changePauseState(true)}
-          disabled={loading || paused === true}
-        >
-          {loading ? "Processing..." : "Pause Vault"}
-        </button>
+      <div className="authority-body">
 
-        <button
-          className="secondary-button"
-          type="button"
-          onClick={() => changePauseState(false)}
-          disabled={loading || paused === false}
-        >
-          {loading ? "Processing..." : "Unpause Vault"}
-        </button>
+        <div className="authority-warning">
+          <span className="warning-symbol">!</span>
+
+          <div>
+            <strong>Emergency boundary</strong>
+
+            <p>
+              Pausing the vault prevents new agent payment
+              activity. This action requires the AgentVault
+              owner through BridgeKey.
+            </p>
+          </div>
+        </div>
+
+        <div className="authority-actions">
+
+          <button
+            className="authority-pause"
+            onClick={() =>
+              changePauseState(true)
+            }
+            disabled={
+              loading ||
+              paused === true
+            }
+          >
+            <span>PAUSE VAULT</span>
+            <small>
+              {paused
+                ? "Already paused"
+                : "Stop autonomous activity"}
+            </small>
+          </button>
+
+          <button
+            className="authority-resume"
+            onClick={() =>
+              changePauseState(false)
+            }
+            disabled={
+              loading ||
+              paused === false
+            }
+          >
+            <span>RESUME VAULT</span>
+            <small>
+              {paused === false
+                ? "Already active"
+                : "Restore autonomous activity"}
+            </small>
+          </button>
+
+        </div>
+
+        <div className="authority-footer">
+
+          <div>
+            <span>OWNER AUTHORITY</span>
+
+            <strong>
+              {owner
+                ? `${owner.slice(
+                    0,
+                    8
+                  )}...${owner.slice(-6)}`
+                : "Loading..."}
+            </strong>
+          </div>
+
+          <div>
+            <span>WALLET STATUS</span>
+
+            <strong>
+              {ownerConnected
+                ? "AUTHORIZED"
+                : "NOT CONNECTED"}
+            </strong>
+          </div>
+
+        </div>
+
       </div>
 
-      {ownerConnected && (
-        <p className="muted">
-          Connected wallet is the AgentVault owner.
-        </p>
+      {message && (
+        <div className="authority-message success">
+          <span />
+          {message}
+        </div>
       )}
 
-      {message && <p className="success-message">{message}</p>}
+      {error && (
+        <div className="authority-message error">
+          <span />
+          {error}
+        </div>
+      )}
 
-      {error && <p className="demo-warning">{error}</p>}
     </section>
   );
 }

@@ -43,21 +43,69 @@ export default function VaultOverview() {
     loadVaultStatus();
   }, []);
 
+  const isActive = status === "Active";
+  const isPaused = status === "Paused";
+
   return (
-    <section className="panel vault-overview">
-      <p className="eyebrow">Vault Overview</p>
+    <section className="vault-command-card">
+      <div className="vault-command-grid" />
 
-      <h2>AgentVault</h2>
+      <div className="vault-command-content">
+        <div className="vault-card-top">
+          <div className="vault-card-label">
+            <span className="vault-card-index">01</span>
+            VAULT CORE
+          </div>
 
-      <span
-        className={`status-badge ${
-          status === "Active" ? "active" : "blocked"
-        }`}
-      >
-        ● {status}
-      </span>
+          <div className="vault-live-indicator">
+            <span className={isActive ? "" : "warning"} />
+            {isActive ? "LIVE" : "ATTENTION"}
+          </div>
+        </div>
 
-      {error && <p className="demo-warning">{error}</p>}
+        <div className="vault-identity">
+          <div className="vault-mini-core">
+            <span>◇</span>
+          </div>
+
+          <div>
+            <span>SECURED WALLET</span>
+            <h2>AgentVault</h2>
+          </div>
+        </div>
+
+        <div className="vault-state">
+          <div
+            className={`vault-state-icon ${
+              isActive ? "active" : "inactive"
+            }`}
+          >
+            {isActive ? "✓" : isPaused ? "!" : "×"}
+          </div>
+
+          <div>
+            <span>CURRENT STATE</span>
+
+            <strong>
+              {status.toUpperCase()}
+            </strong>
+
+            <small>
+              {isActive
+                ? "Vault is accepting policy-bound activity."
+                : isPaused
+                ? "Owner controls have paused vault activity."
+                : "Vault is not currently active."}
+            </small>
+          </div>
+        </div>
+
+        {error && (
+          <p className="demo-warning">
+            {error}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

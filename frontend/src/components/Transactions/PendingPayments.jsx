@@ -24,9 +24,15 @@ function getReadOnlyContract() {
 }
 
 function shortenAddress(address) {
-  if (!address) return "-";
+  if (!address) return "—";
 
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function shortenHash(hash) {
+  if (!hash) return "—";
+
+  return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
 }
 
 function formatAmount(amount) {
@@ -56,11 +62,16 @@ export default function PendingPayments() {
       const nextPaymentId =
         await vault.nextPaymentId();
 
-      const paymentCount = Number(nextPaymentId);
+      const paymentCount =
+        Number(nextPaymentId);
 
       const payments = [];
 
-      for (let id = 0; id < paymentCount; id++) {
+      for (
+        let id = 0;
+        id < paymentCount;
+        id++
+      ) {
         const payment =
           await vault.getPayment(id);
 
@@ -69,7 +80,9 @@ export default function PendingPayments() {
         const receiptHash = payment[2];
         const status = Number(payment[3]);
 
-        if (status === PAYMENT_STATUS.PENDING) {
+        if (
+          status === PAYMENT_STATUS.PENDING
+        ) {
           let blockTimestamp = null;
 
           try {
@@ -133,7 +146,8 @@ export default function PendingPayments() {
       15000
     );
 
-    return () => clearInterval(interval);
+    return () =>
+      clearInterval(interval);
   }, []);
 
   async function getOwnerContract() {
@@ -144,7 +158,9 @@ export default function PendingPayments() {
     }
 
     if (!window.ethereum.isBridgeKey) {
-      throw new Error("Please use BridgeKey.");
+      throw new Error(
+        "Please use BridgeKey."
+      );
     }
 
     const chainId =
@@ -156,7 +172,8 @@ export default function PendingPayments() {
       parseInt(chainId, 16);
 
     if (
-      numericChainId !== MST_TESTNET_CHAIN_ID
+      numericChainId !==
+      MST_TESTNET_CHAIN_ID
     ) {
       throw new Error(
         "Please switch BridgeKey to MST Testnet."
@@ -188,7 +205,8 @@ export default function PendingPayments() {
       signer
     );
 
-    const owner = await vault.owner();
+    const owner =
+      await vault.owner();
 
     if (
       owner.toLowerCase() !==
@@ -205,6 +223,7 @@ export default function PendingPayments() {
   async function approvePayment(id) {
     try {
       setProcessingId(id);
+
       setMessage(
         `Approving payment #${id}...`
       );
@@ -246,6 +265,7 @@ export default function PendingPayments() {
   async function rejectPayment(id) {
     try {
       setProcessingId(id);
+
       setMessage(
         `Rejecting payment #${id}...`
       );
@@ -285,51 +305,75 @@ export default function PendingPayments() {
   }
 
   return (
-    <section className="panel pending-panel">
-      <div className="panel-header">
+    <section className="approval-console">
+      <div className="approval-console-header">
         <div>
-          <p className="eyebrow">
-            ACTION REQUIRED
-          </p>
+          <div className="approval-kicker">
+            <span className="approval-warning-dot" />
+            HUMAN AUTHORITY REQUIRED
+          </div>
 
-          <h2>
-            Pending Payments
-          </h2>
+          <h2>Approval Queue</h2>
+
+          <p>
+            Payments above the configured approval boundary
+            wait here for owner authorization.
+          </p>
         </div>
 
-        <span className="status-badge pending">
-          {pendingPayments.length}
-        </span>
+        <div className="approval-count">
+          <strong>
+            {pendingPayments.length}
+          </strong>
+
+          <span>
+            PENDING
+          </span>
+        </div>
       </div>
 
       {loading ? (
-        <p>
-          Loading pending payments from
-          AgentVault...
-        </p>
-      ) : pendingPayments.length === 0 ? (
-        <div className="empty-state">
-          <p>
-            No pending payments.
-          </p>
+        <div className="approval-empty">
+          <div className="approval-loader">
+            <span />
+            <span />
+            <span />
+          </div>
 
-          <small>
-            Pending payments will appear here when
-            AgentVault requires owner approval.
-          </small>
+          <strong>
+            Scanning pending requests
+          </strong>
+
+          <span>
+            Reading AgentVault state...
+          </span>
+        </div>
+      ) : pendingPayments.length === 0 ? (
+        <div className="approval-empty">
+          <div className="approval-clear-icon">
+            ✓
+          </div>
+
+          <strong>
+            No intervention required
+          </strong>
+
+          <span>
+            The approval queue is clear.
+          </span>
         </div>
       ) : (
-        <div className="pending-list">
+        <div className="approval-list">
           {pendingPayments.map(
             (payment) => (
-              <div
-                className="pending-payment"
+              <article
+                className="approval-request"
                 key={payment.id}
               >
-                <div className="pending-details">
-                  <div>
+                <div className="approval-request-top">
+                  <div className="approval-request-id">
                     <span>
-                      Payment ID
+                      PAYMENT REQUEST
                     </span>
 
                     <strong>
@@ -337,25 +381,15 @@ export default function PendingPayments() {
                     </strong>
                   </div>
 
-                  <div>
-                    <span>
-                      Recipient
-                    </span>
-
-                    <strong
-                      title={
-                        payment.recipient
-                      }
-                    >
-                      {shortenAddress(
-                        payment.recipient
-                      )}
-                    </strong>
+                  <div className="approval-pending-badge">
+                    ● PENDING
                   </div>
+                </div>
 
-                  <div>
+                <div className="approval-request-main">
+                  <div className="approval-amount">
                     <span>
-                      Amount
+                      REQUESTED
                     </span>
 
                     <strong>
@@ -365,21 +399,75 @@ export default function PendingPayments() {
                     </strong>
                   </div>
 
-                  <div>
+                  <div className="approval-recipient">
                     <span>
-                      Receipt Hash
+                      RECIPIENT
                     </span>
 
-                    <strong>
+                    <code
+                      title={
+                        payment.recipient
+                      }
+                    >
                       {shortenAddress(
+                        payment.recipient
+                      )}
+                    </code>
+                  </div>
+
+                  <div className="approval-receipt">
+                    <span>
+                      ACTION RECEIPT
+                    </span>
+
+                    <code
+                      title={
+                        payment.receiptHash
+                      }
+                    >
+                      {shortenHash(
                         payment.receiptHash
                       )}
+                    </code>
+                  </div>
+                </div>
+
+                <div className="approval-boundary">
+                  <div className="boundary-line">
+                    <span />
+                  </div>
+
+                  <div>
+                    <small>
+                      POLICY BOUNDARY
+                    </small>
+
+                    <strong>
+                      OWNER DECISION REQUIRED
                     </strong>
                   </div>
                 </div>
 
-                <div className="pending-actions">
+                <div className="approval-actions">
                   <button
+                    className="approval-reject"
+                    disabled={
+                      processingId !== null
+                    }
+                    onClick={() =>
+                      rejectPayment(
+                        payment.id
+                      )
+                    }
+                  >
+                    {processingId ===
+                    payment.id
+                      ? "PROCESSING..."
+                      : "REJECT REQUEST"}
+                  </button>
+
+                  <button
+                    className="approval-approve"
                     disabled={
                       processingId !== null
                     }
@@ -391,31 +479,19 @@ export default function PendingPayments() {
                   >
                     {processingId ===
                     payment.id
-                      ? "Processing..."
-                      : "Approve"}
-                  </button>
-
-                  <button
-                    disabled={
-                      processingId !== null
-                    }
-                    onClick={() =>
-                      rejectPayment(
-                        payment.id
-                      )
-                    }
-                  >
-                    Reject
+                      ? "PROCESSING..."
+                      : "AUTHORIZE PAYMENT"}
                   </button>
                 </div>
-              </div>
+              </article>
             )
           )}
         </div>
       )}
 
       {message && (
-        <div className="rules-message">
+        <div className="approval-message">
+          <span>◆</span>
           {message}
         </div>
       )}

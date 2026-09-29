@@ -17,6 +17,11 @@ function getReadOnlyContract() {
   );
 }
 
+function shorten(value) {
+  if (!value) return "";
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
 export default function VaultRules() {
   const [rules, setRules] = useState({
     dailyLimit: "",
@@ -31,11 +36,11 @@ export default function VaultRules() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [activeEdit, setActiveEdit] = useState("");
 
   async function loadRules() {
     try {
       setLoading(true);
-      setMessage("");
 
       const vault = getReadOnlyContract();
 
@@ -56,18 +61,11 @@ export default function VaultRules() {
       ]);
 
       setRules({
-        // These three values are wei-denominated MST amounts.
         dailyLimit: ethers.formatEther(dailyLimit),
         perTransactionMax: ethers.formatEther(perTransactionMax),
         approvalThreshold: ethers.formatEther(approvalThreshold),
-
-        // These are integer configuration values.
         maxTrustTier: maxTrustTier.toString(),
         paymentsToNextTier: paymentsToNextTier.toString(),
-
-        // IMPORTANT:
-        // tierDailyLimit is stored directly as 100 / 250 / 500 / 1000,
-        // not as wei.
         tierDailyLimit: tierDailyLimit.toString(),
       });
     } catch (error) {
@@ -90,21 +88,15 @@ export default function VaultRules() {
   }
 
   async function getOwnerContract() {
-    if (!window.ethereum) {
+    if (!window.ethereum?.isBridgeKey) {
       throw new Error("BridgeKey wallet not detected.");
-    }
-
-    if (!window.ethereum.isBridgeKey) {
-      throw new Error("Please use BridgeKey.");
     }
 
     const chainId = await window.ethereum.request({
       method: "eth_chainId",
     });
 
-    const numericChainId = parseInt(chainId, 16);
-
-    if (numericChainId !== MST_TESTNET_CHAIN_ID) {
+    if (parseInt(chainId, 16) !== MST_TESTNET_CHAIN_ID) {
       throw new Error("Please switch BridgeKey to MST Testnet.");
     }
 
@@ -137,18 +129,17 @@ export default function VaultRules() {
   async function updateRule(label, transactionFunction) {
     try {
       setSaving(true);
+      setActiveEdit(label);
       setMessage(`Updating ${label}...`);
 
       const vault = await getOwnerContract();
-
       const tx = await transactionFunction(vault);
 
-      setMessage(`Waiting for ${label} transaction...`);
+      setMessage(`Confirming ${label}...`);
 
       await tx.wait();
 
       setMessage(`${label} updated successfully.`);
-
       await loadRules();
     } catch (error) {
       console.error(`Failed to update ${label}:`, error);
@@ -161,307 +152,321 @@ export default function VaultRules() {
       );
     } finally {
       setSaving(false);
+      setActiveEdit("");
     }
   }
 
-  async function saveDailyLimit() {
+  const saveDailyLimit = () => {
     const value = ethers.parseEther(rules.dailyLimit || "0");
 
-    await updateRule("daily limit", (vault) =>
+    updateRule("daily spending limit", (vault) =>
       vault.setDailyLimit(value)
     );
-  }
+  };
 
-  async function savePerTransactionMax() {
+  const savePerTransactionMax = () => {
     const value = ethers.parseEther(
       rules.perTransactionMax || "0"
     );
 
-    await updateRule("per-transaction maximum", (vault) =>
+    updateRule("transaction maximum", (vault) =>
       vault.setPerTransactionMax(value)
     );
-  }
+  };
 
-  async function saveApprovalThreshold() {
+  const saveApprovalThreshold = () => {
     const value = ethers.parseEther(
       rules.approvalThreshold || "0"
     );
 
-    await updateRule("approval threshold", (vault) =>
+    updateRule("approval threshold", (vault) =>
       vault.setApprovalThreshold(value)
     );
-  }
+  };
 
-  async function saveMaxTrustTier() {
+  const saveMaxTrustTier = () => {
     const value = BigInt(rules.maxTrustTier || "0");
 
-    await updateRule("maximum trust tier", (vault) =>
+    updateRule("maximum trust tier", (vault) =>
       vault.setMaxTrustTier(value)
     );
-  }
+  };
 
-  async function savePaymentsToNextTier() {
+  const savePaymentsToNextTier = () => {
     const value = BigInt(
       rules.paymentsToNextTier || "0"
     );
 
-    await updateRule(
-      "payments required for next tier",
-      (vault) => vault.setPaymentsToNextTier(value)
+    updateRule("tier progression", (vault) =>
+      vault.setPaymentsToNextTier(value)
     );
-  }
+  };
 
-  async function saveTierDailyLimit() {
-    // IMPORTANT:
-    // The deployed contract stores this value directly:
-    // Tier 0 -> 100
-    // Tier 1 -> 250
-    // Tier 2 -> 500
-    // Tier 3 -> 1000
-    //
-    // Therefore DO NOT use ethers.parseEther() here.
+  const saveTierDailyLimit = () => {
     const value = BigInt(rules.tierDailyLimit || "0");
 
-    await updateRule(
-      `Tier ${tier} daily limit`,
-      (vault) =>
-        vault.setTierDailyLimit(
-          Number(tier),
-          value
-        )
+    updateRule(`Tier ${tier} daily limit`, (vault) =>
+      vault.setTierDailyLimit(Number(tier), value)
     );
-  }
+  };
 
   if (loading) {
     return (
-      <section className="panel">
-        <div className="panel-header">
+      <section className="policy-config-shell">
+        <div className="policy-config-loading">
+          <span className="loading-orb" />
           <div>
-            <p className="eyebrow">OWNER SETTINGS</p>
-            <h2>Rules Editor</h2>
+            <p className="eyebrow">POLICY ENGINE</p>
+            <h2>Loading enforcement rules</h2>
+            <p>Reading live policy state from AgentVault.</p>
           </div>
         </div>
-
-        <p>Loading rules from AgentVault...</p>
       </section>
     );
   }
 
   return (
-    <section className="panel">
-      <div className="panel-header">
+    <section className="policy-config-shell">
+
+      <div className="policy-config-header">
         <div>
-          <p className="eyebrow">OWNER SETTINGS</p>
-          <h2>Rules Editor</h2>
+          <div className="section-kicker">
+            <span className="pulse-dot" />
+            ON-CHAIN POLICY CONTROL
+          </div>
+
+          <h2>Policy Control Center</h2>
+
+          <p>
+            Configure the boundaries governing autonomous payment
+            execution. Every change is written directly to AgentVault
+            and requires owner authorization.
+          </p>
+        </div>
+
+        <div className="policy-integrity">
+          <span>POLICY INTEGRITY</span>
+          <strong>ON-CHAIN</strong>
+          <small>{shorten(AGENT_VAULT_ADDRESS)}</small>
         </div>
       </div>
 
-      <p className="rules-description">
-        Update the spending and trust rules stored directly on
-        the AgentVault contract. Changes require the vault
-        owner's BridgeKey approval.
-      </p>
+      <div className="policy-rule-grid">
 
-      <div className="rules-editor">
+        {/* SPENDING */}
+        <article className="policy-rule-card featured">
+          <div className="rule-card-top">
+            <div className="rule-icon">01</div>
 
-        {/* Daily spending limit */}
-        <div className="rule-editor-row">
-          <div>
-            <label>Daily spending limit</label>
-            <span>MST</span>
+            <div>
+              <span className="rule-label">SPENDING GUARDRAILS</span>
+              <h3>Financial boundaries</h3>
+            </div>
+
+            <span className="rule-live">ENFORCED</span>
           </div>
 
-          <input
-            type="number"
-            min="0"
-            step="0.000001"
-            value={rules.dailyLimit}
-            onChange={(event) =>
-              updateField(
-                "dailyLimit",
-                event.target.value
-              )
-            }
-          />
+          <div className="rule-fields">
 
-          <button
-            disabled={saving}
-            onClick={saveDailyLimit}
-          >
-            Save
-          </button>
-        </div>
+            <RuleField
+              label="Daily spending limit"
+              description="Maximum autonomous spend during the current day."
+              value={rules.dailyLimit}
+              unit="MST"
+              onChange={(value) =>
+                updateField("dailyLimit", value)
+              }
+              onSave={saveDailyLimit}
+              saving={saving && activeEdit === "daily spending limit"}
+            />
 
-        {/* Per-transaction maximum */}
-        <div className="rule-editor-row">
-          <div>
-            <label>Maximum per transaction</label>
-            <span>MST</span>
+            <RuleField
+              label="Transaction maximum"
+              description="Hard ceiling applied to each individual payment."
+              value={rules.perTransactionMax}
+              unit="MST"
+              onChange={(value) =>
+                updateField("perTransactionMax", value)
+              }
+              onSave={savePerTransactionMax}
+              saving={saving && activeEdit === "transaction maximum"}
+            />
+
+            <RuleField
+              label="Human approval threshold"
+              description="Payments above this amount enter the approval queue."
+              value={rules.approvalThreshold}
+              unit="MST"
+              onChange={(value) =>
+                updateField("approvalThreshold", value)
+              }
+              onSave={saveApprovalThreshold}
+              saving={saving && activeEdit === "approval threshold"}
+            />
+
+          </div>
+        </article>
+
+        {/* TRUST */}
+        <article className="policy-rule-card">
+          <div className="rule-card-top">
+            <div className="rule-icon">02</div>
+
+            <div>
+              <span className="rule-label">TRUST MODEL</span>
+              <h3>Agent progression</h3>
+            </div>
+
+            <span className="rule-live">ACTIVE</span>
           </div>
 
-          <input
-            type="number"
-            min="0"
-            step="0.000001"
-            value={rules.perTransactionMax}
-            onChange={(event) =>
-              updateField(
-                "perTransactionMax",
-                event.target.value
-              )
-            }
-          />
+          <div className="trust-visual">
+            <div className="trust-level">
+              <span>CURRENT CONFIGURATION</span>
 
-          <button
-            disabled={saving}
-            onClick={savePerTransactionMax}
-          >
-            Save
-          </button>
-        </div>
+              <strong>
+                TIER {Math.min(
+                  Number(tier),
+                  Number(rules.maxTrustTier || 0)
+                )}
+              </strong>
+            </div>
 
-        {/* Approval threshold */}
-        <div className="rule-editor-row">
-          <div>
-            <label>Approval threshold</label>
-            <span>MST</span>
+            <div className="tier-track">
+              {[0, 1, 2, 3].map((item) => (
+                <div
+                  key={item}
+                  className={`tier-node ${
+                    Number(tier) === item ? "selected" : ""
+                  }`}
+                >
+                  <span>{item}</span>
+                  <small>T{item}</small>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <input
-            type="number"
-            min="0"
-            step="0.000001"
-            value={rules.approvalThreshold}
-            onChange={(event) =>
-              updateField(
-                "approvalThreshold",
-                event.target.value
-              )
-            }
-          />
+          <div className="rule-fields compact">
 
-          <button
-            disabled={saving}
-            onClick={saveApprovalThreshold}
-          >
-            Save
-          </button>
-        </div>
+            <RuleField
+              label="Maximum trust tier"
+              description="Highest tier the vault can assign."
+              value={rules.maxTrustTier}
+              unit="TIER"
+              onChange={(value) =>
+                updateField("maxTrustTier", value)
+              }
+              onSave={saveMaxTrustTier}
+              saving={saving && activeEdit === "maximum trust tier"}
+            />
 
-        {/* Maximum trust tier */}
-        <div className="rule-editor-row">
-          <div>
-            <label>Maximum trust tier</label>
-            <span>Tier</span>
+            <RuleField
+              label="Clean payments to advance"
+              description="Successful payments required for progression."
+              value={rules.paymentsToNextTier}
+              unit="PAYMENTS"
+              onChange={(value) =>
+                updateField("paymentsToNextTier", value)
+              }
+              onSave={savePaymentsToNextTier}
+              saving={saving && activeEdit === "tier progression"}
+            />
+
+            <div className="tier-configurator">
+              <div>
+                <span className="field-label">
+                  Tier limit profile
+                </span>
+
+                <span className="field-description">
+                  Configure the daily limit stored for each trust tier.
+                </span>
+              </div>
+
+              <select
+                value={tier}
+                onChange={(event) =>
+                  setTier(event.target.value)
+                }
+              >
+                <option value="0">Tier 0</option>
+                <option value="1">Tier 1</option>
+                <option value="2">Tier 2</option>
+                <option value="3">Tier 3</option>
+              </select>
+            </div>
+
+            <RuleField
+              label={`Tier ${tier} daily limit`}
+              description="Limit profile used by this trust tier."
+              value={rules.tierDailyLimit}
+              unit="RAW"
+              onChange={(value) =>
+                updateField("tierDailyLimit", value)
+              }
+              onSave={saveTierDailyLimit}
+              saving={
+                saving &&
+                activeEdit === `Tier ${tier} daily limit`
+              }
+            />
+
           </div>
-
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={rules.maxTrustTier}
-            onChange={(event) =>
-              updateField(
-                "maxTrustTier",
-                event.target.value
-              )
-            }
-          />
-
-          <button
-            disabled={saving}
-            onClick={saveMaxTrustTier}
-          >
-            Save
-          </button>
-        </div>
-
-        {/* Payments required for next tier */}
-        <div className="rule-editor-row">
-          <div>
-            <label>
-              Payments required for next tier
-            </label>
-            <span>Payments</span>
-          </div>
-
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={rules.paymentsToNextTier}
-            onChange={(event) =>
-              updateField(
-                "paymentsToNextTier",
-                event.target.value
-              )
-            }
-          />
-
-          <button
-            disabled={saving}
-            onClick={savePaymentsToNextTier}
-          >
-            Save
-          </button>
-        </div>
-
-        {/* Tier selector */}
-        <div className="tier-selector">
-          <label>
-            Tier daily-limit configuration
-          </label>
-
-          <select
-            value={tier}
-            onChange={(event) =>
-              setTier(event.target.value)
-            }
-          >
-            <option value="0">Tier 0</option>
-            <option value="1">Tier 1</option>
-            <option value="2">Tier 2</option>
-            <option value="3">Tier 3</option>
-          </select>
-        </div>
-
-        {/* Selected tier daily limit */}
-        <div className="rule-editor-row">
-          <div>
-            <label>
-              Tier {tier} daily limit
-            </label>
-            <span>MST</span>
-          </div>
-
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={rules.tierDailyLimit}
-            onChange={(event) =>
-              updateField(
-                "tierDailyLimit",
-                event.target.value
-              )
-            }
-          />
-
-          <button
-            disabled={saving}
-            onClick={saveTierDailyLimit}
-          >
-            Save
-          </button>
-        </div>
+        </article>
 
       </div>
 
       {message && (
-        <div className="rules-message">
-          {message}
+        <div className="policy-config-message">
+          <span className="message-indicator" />
+          <span>{message}</span>
         </div>
       )}
+
     </section>
+  );
+}
+
+function RuleField({
+  label,
+  description,
+  value,
+  unit,
+  onChange,
+  onSave,
+  saving,
+}) {
+  return (
+    <div className="rule-field">
+      <div className="rule-field-copy">
+        <span className="field-label">{label}</span>
+        <span className="field-description">{description}</span>
+      </div>
+
+      <div className="rule-field-action">
+        <div className="policy-input">
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={value}
+            onChange={(event) =>
+              onChange(event.target.value)
+            }
+          />
+
+          <span>{unit}</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+        >
+          {saving ? "..." : "UPDATE"}
+        </button>
+      </div>
+    </div>
   );
 }
