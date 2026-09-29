@@ -372,7 +372,7 @@ function App() {
                 APPROVED RECIPIENTS
               </div>
 
-              <AllowedRecipients />
+              <AllowedRecipients wallet={wallet} />
             </div>
           </div>
         </section>
@@ -403,7 +403,7 @@ function App() {
                 SPENDING POLICY
               </div>
 
-              <VaultRules />
+              <VaultRules wallet={wallet} />
             </div>
 
             <div>
