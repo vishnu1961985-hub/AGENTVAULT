@@ -33,7 +33,6 @@ export default defineConfig({
   chainType: "l1",
   url: configVariable("MST_RPC_URL"),
   chainId: 91562037,
-  accounts: [configVariable("MST_PRIVATE_KEY")]
 },
     sepolia: {
       type: "http",

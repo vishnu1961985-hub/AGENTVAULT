@@ -1,6 +1,8 @@
 import { network } from "hardhat";
 
-const { ethers } = await network.create();
+const { ethers } = await network.create({
+  network: "mstTestnet",
+});
 
 const VAULT_ADDRESS = "0x746392d55268c859cBf16bcc8b7902615D2be8b1";
 const MOCK_MERCHANT = "0xD141f9dB830C3733F62aB09dECB41EA893B6418F";
