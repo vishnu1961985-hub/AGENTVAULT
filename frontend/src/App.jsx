@@ -363,7 +363,7 @@ function App() {
                 PENDING AUTHORITY
               </div>
 
-              <PendingPayments />
+              <PendingPayments wallet={wallet} />
             </div>
 
             <div>
