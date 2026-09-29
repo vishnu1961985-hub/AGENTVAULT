@@ -1,4 +1,4 @@
-﻿"""AgentVault local visual demo server. No blockchain transactions."""
+"""AgentVault local visual demo server. No blockchain transactions."""
 import json
 import sys
 from datetime import datetime
@@ -92,7 +92,7 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True, "simulation_only": True
             })
         if self.path in ("/", "/index.html"):
-            page = FRONTEND / "index.html"
+            page = FRONTEND / "simulator.html"
             if not page.is_file():
                 return self.send_json(404, {"error": "Dashboard not created yet"})
             body = page.read_bytes()
@@ -124,5 +124,5 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("AgentVault: http://127.0.0.1:8000")
-    print("LOCAL SIMULATION ONLY — NO BLOCKCHAIN TRANSACTIONS")
+    print("LOCAL SIMULATION ONLY � NO BLOCKCHAIN TRANSACTIONS")
     ThreadingHTTPServer(("127.0.0.1", 8000), Handler).serve_forever()
