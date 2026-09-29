@@ -43,6 +43,11 @@ export class AgentVaultClient {
     return await this.signer.getAddress();
   }
 
+  async getVaultAgent(): Promise<string> {
+    const vault = new Contract(this.vaultAddress, abi, this.signer);
+    return await vault.agent();
+  }
+
   async getVaultOwner(): Promise<string> {
     const vault = new Contract(
       this.vaultAddress,
