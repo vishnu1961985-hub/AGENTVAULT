@@ -4,7 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "hardhat test",
+    "dev": "tsx agent/src/index.ts",
+    "dev:service": "tsx agent/src/api/server.ts",
+    "build": "tsc",
+    "start": "node dist/agent/src/index.js",
+    "start:service": "node dist/agent/src/api/server.js"
   },
   "repository": {
     "type": "git",
@@ -25,12 +30,20 @@
     "@types/chai": "^5.2.3",
     "@types/chai-as-promised": "^8.0.2",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^22.20.4",
+    "@types/node": "^26.6.3",
     "chai": "^6.2.2",
-    "ethers": "^6.17.0",
     "forge-std": "github:foundry-rs/forge-std#v1.16.2",
     "hardhat": "^3.18.0",
     "mocha": "^12.0.2",
-    "typescript": "~6.0.3"
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "@mstblockchain/mst-sdk": "^1.0.0",
+    "dotenv": "^18.0.4",
+    "esbuild": "^0.28.2",
+    "ethers": "^6.17.0",
+    "undici-types": "^8.9.0"
   }
 }

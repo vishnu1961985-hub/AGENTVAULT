@@ -1,11 +1,29 @@
 {
   "compilerOptions": {
     "lib": ["es2023"],
-    "module": "node20",
     "target": "es2023",
-    "skipLibCheck": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": ".",
     "outDir": "dist",
+
     "types": ["node", "mocha"],
-    "verbatimModuleSyntax": true
-  }
+
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "verbatimModuleSyntax": true,
+
+    "skipLibCheck": true,
+    "sourceMap": true
+  },
+  "include": [
+    "agent/**/*.ts",
+    "merchant/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test"
+  ]
 }

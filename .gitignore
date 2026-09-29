@@ -30,5 +30,10 @@
 # Snapshot cheatcodes output
 /snapshots
 
-
+# Python virtual environments
 venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
