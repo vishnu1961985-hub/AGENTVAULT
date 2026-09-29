@@ -23,7 +23,7 @@ function errorText(error, fallback) {
   return error?.shortMessage || error?.reason || error?.message || fallback;
 }
 
-export default function VaultRules() {
+export default function VaultRules({ wallet }) {
   const [rules, setRules] = useState({
     dailyLimit: "",
     perTransactionMax: "",
@@ -255,7 +255,7 @@ function RuleField({ label, description, value, unit, onChange, onSave, saving }
           <input type="number" min="0" step="any" value={value} onChange={(event) => onChange(event.target.value)} />
           <span>{unit}</span>
         </div>
-        <button type="button" onClick={onSave} disabled={saving}>{saving ? "..." : "UPDATE"}</button>
+        <button type="button" onClick={onSave} disabled={saving || !wallet?.isOwner || !wallet?.isCorrectNetwork}>{saving ? "..." : "UPDATE"}</button>
       </div>
     </div>
   );
