@@ -53,11 +53,13 @@ export default function VaultStats() {
 
         setStats({
           balance: formatValue(balance),
-          dailyLimit: formatValue(dailyLimit),
+          dailyLimit: formatValue(effectiveDailyLimit),
           todaySpending: formatValue(todaySpending),
           perTransactionMax: formatValue(perTransactionMax),
           approvalThreshold: formatValue(approvalThreshold),
           trustTier: `Tier ${trustTier.toString()}`,
+          agent: agent,
+          owner: owner,
         });
       } catch (err) {
         console.error("Failed to read AgentVault stats:", err);
@@ -73,6 +75,8 @@ export default function VaultStats() {
           perTransactionMax: "Unavailable",
           approvalThreshold: "Unavailable",
           trustTier: "Unavailable",
+          agent: "",
+          owner: "",
         });
       }
     }
