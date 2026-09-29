@@ -1,254 +1,445 @@
+import { useState } from "react";
 import "./App.css";
+
 import WalletConnect from "./components/Wallet/WalletConnect";
-
-const vault = {
-  balance: "12,450 MST",
-  dailyLimit: "5,000 MST",
-  spentToday: "1,240 MST",
-  transactionLimit: "1,000 MST",
-  approvalThreshold: "500 MST",
-  trustTier: "Tier 2",
-  status: "Active",
-};
-
-const transactions = [
-  {
-    id: "TX-001",
-    recipient: "marketplace.mst",
-    amount: "120 MST",
-    status: "Allowed",
-    time: "10:42 AM",
-  },
-  {
-    id: "TX-002",
-    recipient: "unknown.recipient",
-    amount: "850 MST",
-    status: "Blocked",
-    time: "10:18 AM",
-  },
-  {
-    id: "TX-003",
-    recipient: "services.mst",
-    amount: "600 MST",
-    status: "Pending",
-    time: "09:56 AM",
-  },
-];
-
-function StatCard({ label, value }) {
-  return (
-    <div className="stat-card">
-      <span className="stat-label">{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function StatusBadge({ status }) {
-  return <span className={`status-badge ${status.toLowerCase()}`}>{status}</span>;
-}
+import VaultOverview from "./components/Vault/VaultOverview";
+import VaultStats from "./components/Vault/VaultStats";
+import AllowedRecipients from "./components/Allowlist/AllowedRecipients";
+import VaultRules from "./components/Rules/VaultRules";
+import VaultControls from "./components/Controls/VaultControls";
+import TransactionFeed from "./components/Transactions/TransactionFeed";
+import PendingPayments from "./components/Transactions/PendingPayments";
+import ReceiptVerification from "./components/Receipts/ReceiptVerification";
+import PolicyEngine from "./components/ControlRoom/PolicyEngine";
 
 function App() {
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
+
+  const selectTransaction = (transaction) => {
+    setSelectedTransaction(transaction);
+  };
+
   return (
     <div className="app">
-      <header className="topbar">
-        <div>
-          <div className="brand">AGENTVAULT</div>
-          <div className="subtitle">Rule-bound wallet for AI agents</div>
+      <div className="ambient ambient-one" />
+      <div className="ambient ambient-two" />
+      <div className="ambient ambient-three" />
+
+      {/* =====================================================
+          COMMAND HEADER
+         ===================================================== */}
+
+      <header className="topbar command-header">
+        <div className="brand-area">
+          <div className="brand-mark">
+            <span />
+            <span />
+            <span />
+          </div>
+
+          <div>
+            <div className="brand">AGENTVAULT</div>
+
+            <div className="subtitle">
+              Autonomous finance, under control.
+            </div>
+          </div>
         </div>
 
-        <WalletConnect />
+        <div className="network-status">
+          <div className="network-pill">
+            <span className="network-dot" />
+            MST TESTNET
+          </div>
+
+          <div className="network-pill subtle">
+            <span className="network-dot cyan" />
+            POLICY ENGINE
+          </div>
+
+          <WalletConnect />
+        </div>
       </header>
 
       <main className="dashboard">
-        <section className="hero">
+
+        {/* =====================================================
+            HERO COMMAND CENTER
+           ===================================================== */}
+
+        <section className="command-hero">
+          <div className="command-hero-copy">
+            <div className="hero-kicker">
+              <span className="hero-kicker-line" />
+              AI AGENT CONTROL CENTER
+            </div>
+
+            <h1>
+              Autonomous action.
+              <br />
+              <span>Human authority.</span>
+            </h1>
+
+            <p>
+              AgentVault gives an AI agent the ability to request payments
+              while keeping the spending policy, approval boundary and
+              emergency controls on-chain.
+            </p>
+
+            <div className="hero-command-status">
+              <div className="hero-status-card">
+                <span className="status-pulse" />
+
+                <div>
+                  <small>VAULT STATUS</small>
+                  <strong>ACTIVE</strong>
+                </div>
+              </div>
+
+              <div className="hero-status-card">
+                <span className="status-pulse cyan" />
+
+                <div>
+                  <small>NETWORK</small>
+                  <strong>MST TESTNET</strong>
+                </div>
+              </div>
+
+              <div className="hero-status-card">
+                <span className="status-pulse purple" />
+
+                <div>
+                  <small>POLICY</small>
+                  <strong>ENFORCED</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="command-hero-core">
+            <div className="hero-core-grid" />
+
+            <div className="hero-core-orbit orbit-one" />
+            <div className="hero-core-orbit orbit-two" />
+            <div className="hero-core-orbit orbit-three" />
+
+            <div className="hero-core-center">
+              <div className="hero-core-symbol">◇</div>
+              <span>VAULT</span>
+              <strong>ACTIVE</strong>
+            </div>
+
+            <div className="hero-core-label">
+              <span>AGENTVAULT</span>
+              <small>RULE ENGINE PROTECTED</small>
+            </div>
+          </div>
+        </section>
+
+        {/* =====================================================
+            SYSTEM TELEMETRY
+           ===================================================== */}
+
+        <section className="system-strip command-strip">
           <div>
-            <p className="eyebrow">VAULT OVERVIEW</p>
-            <h1>Agent spending control</h1>
-            <p className="hero-description">
-              Monitor your vault, spending rules and agent transactions from
-              one place.
-            </p>
+            <span className="strip-dot green" />
+            CONTRACT ONLINE
           </div>
 
-          <div className="vault-status">
-            <span className="status-dot" />
-            {vault.status}
-          </div>
-        </section>
-
-        <section className="stats-grid">
-          <StatCard label="Vault Balance" value={vault.balance} />
-          <StatCard label="Daily Limit" value={vault.dailyLimit} />
-          <StatCard label="Today's Spending" value={vault.spentToday} />
-          <StatCard
-            label="Per-Transaction Maximum"
-            value={vault.transactionLimit}
-          />
-          <StatCard
-            label="Approval Threshold"
-            value={vault.approvalThreshold}
-          />
-          <StatCard label="Trust Tier" value={vault.trustTier} />
-        </section>
-
-        <section className="content-grid">
-          <div className="panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">RULES</p>
-                <h2>Vault Rules</h2>
-              </div>
-
-              <button className="secondary-button">Edit Rules</button>
-            </div>
-
-            <div className="rules-list">
-              <div className="rule-row">
-                <span>Daily spending limit</span>
-                <strong>{vault.dailyLimit}</strong>
-              </div>
-
-              <div className="rule-row">
-                <span>Maximum per transaction</span>
-                <strong>{vault.transactionLimit}</strong>
-              </div>
-
-              <div className="rule-row">
-                <span>Manual approval above</span>
-                <strong>{vault.approvalThreshold}</strong>
-              </div>
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">ACCESS CONTROL</p>
-                <h2>Allowed Recipients</h2>
-              </div>
-
-              <button className="secondary-button">Manage</button>
-            </div>
-
-            <div className="recipient-list">
-              <div className="recipient">
-                <span>marketplace.mst</span>
-                <span className="allowed-label">Allowed</span>
-              </div>
-
-              <div className="recipient">
-                <span>services.mst</span>
-                <span className="allowed-label">Allowed</span>
-              </div>
-
-              <div className="recipient">
-                <span>payments.mst</span>
-                <span className="allowed-label">Allowed</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">TRANSACTION MONITOR</p>
-              <h2>Transaction Feed</h2>
-            </div>
-
-            <div className="feed-filters">
-              <button className="filter active">All</button>
-              <button className="filter">Allowed</button>
-              <button className="filter">Blocked</button>
-              <button className="filter">Pending</button>
-            </div>
-          </div>
-
-          <div className="transaction-table">
-            <div className="transaction-header">
-              <span>ID</span>
-              <span>Recipient</span>
-              <span>Amount</span>
-              <span>Status</span>
-              <span>Time</span>
-            </div>
-
-            {transactions.map((transaction) => (
-              <div className="transaction-row" key={transaction.id}>
-                <span>{transaction.id}</span>
-                <span>{transaction.recipient}</span>
-                <span>{transaction.amount}</span>
-                <StatusBadge status={transaction.status} />
-                <span>{transaction.time}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="bottom-grid">
-          <div className="panel pending-panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">ACTION REQUIRED</p>
-                <h2>Pending Payment</h2>
-              </div>
-
-              <StatusBadge status="Pending" />
-            </div>
-
-            <div className="pending-details">
-              <div>
-                <span>Recipient</span>
-                <strong>services.mst</strong>
-              </div>
-
-              <div>
-                <span>Amount</span>
-                <strong>600 MST</strong>
-              </div>
-            </div>
-
-            <div className="action-buttons">
-              <button className="approve-button">Approve</button>
-              <button className="reject-button">Reject</button>
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">SAFETY CONTROL</p>
-                <h2>Vault Control</h2>
-              </div>
-            </div>
-
-            <p className="control-description">
-              Pause the vault to prevent new agent transactions until it is
-              manually resumed.
-            </p>
-
-            <button className="pause-button">Pause Vault</button>
-          </div>
-        </section>
-
-        <section className="panel receipt-panel">
           <div>
-            <p className="eyebrow">VERIFICATION</p>
-            <h2>Receipt Verification</h2>
-            <p className="control-description">
-              Verify transaction receipts and open the corresponding MSTScan
-              transaction once blockchain integration is connected.
-            </p>
+            <span className="strip-dot cyan" />
+            BLOCKCHAIN EVENTS LIVE
           </div>
 
-          <button className="secondary-button">Verify Receipt</button>
+          <div>
+            <span className="strip-dot purple" />
+            RULE ENGINE ACTIVE
+          </div>
+
+          <div>
+            <span className="strip-dot amber" />
+            OWNER CONTROLS ENABLED
+          </div>
         </section>
 
-        <div className="demo-warning">
-          DEMO UI — transaction values and statuses shown above are local
-          placeholder data and are not blockchain activity.
+        {/* =====================================================
+            VAULT TELEMETRY
+           ===================================================== */}
+
+        <section className="section-intro telemetry-heading">
+          <div>
+            <p className="eyebrow">VAULT TELEMETRY</p>
+            <h2>Command overview</h2>
+          </div>
+
+          <span className="section-live">
+            <span />
+            LIVE DATA
+          </span>
+        </section>
+
+        <div className="overview-command-grid">
+          <VaultOverview />
+          <VaultStats />
         </div>
+
+        {/* =====================================================
+            MAIN DECISION ENGINE
+           ===================================================== */}
+
+        <section className="decision-section">
+          <div className="section-intro">
+            <div>
+              <p className="eyebrow">AUTONOMOUS SECURITY LAYER</p>
+
+              <h2>
+                Watch the agent
+                <span className="heading-accent"> decide.</span>
+              </h2>
+            </div>
+
+            <div className="decision-heading-meta">
+              <span className="live-beacon" />
+              REAL-TIME POLICY EVALUATION
+            </div>
+          </div>
+
+          <PolicyEngine
+            selectedTransaction={selectedTransaction}
+          />
+        </section>
+
+        {/* =====================================================
+            LIVE ACTIVITY
+           ===================================================== */}
+
+        <section className="activity-section">
+          <div className="section-intro">
+            <div>
+              <p className="eyebrow">ON-CHAIN ACTIVITY</p>
+
+              <h2>
+                Agent activity
+                <span className="heading-accent"> stream.</span>
+              </h2>
+            </div>
+
+            <div className="activity-meta">
+              <span className="live-beacon cyan" />
+              BLOCKCHAIN EVENTS
+            </div>
+          </div>
+
+          <div className="activity-command-layout">
+            <div className="activity-feed-shell">
+              <TransactionFeed
+                onSelectTransaction={selectTransaction}
+              />
+            </div>
+
+            <aside className="activity-side-panel">
+              <div className="side-panel-header">
+                <span>INSPECTION MODE</span>
+
+                <span className="side-panel-status">
+                  {selectedTransaction ? "ACTIVE" : "IDLE"}
+                </span>
+              </div>
+
+              {selectedTransaction ? (
+                <div className="inspection-active">
+                  <div className="inspection-status">
+                    <span
+                      className={`inspection-status-dot ${selectedTransaction.status.toLowerCase()}`}
+                    />
+
+                    <div>
+                      <small>SELECTED EVENT</small>
+
+                      <strong>
+                        Payment #{selectedTransaction.id}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="inspection-value">
+                    <small>DECISION</small>
+
+                    <strong>
+                      {selectedTransaction.status.toUpperCase()}
+                    </strong>
+                  </div>
+
+                  <div className="inspection-target">
+                    <small>RECIPIENT</small>
+
+                    <code>
+                      {selectedTransaction.recipient}
+                    </code>
+                  </div>
+
+                  <div className="inspection-block">
+                    <small>BLOCK NUMBER</small>
+
+                    <strong>
+                      {selectedTransaction.blockNumber}
+                    </strong>
+                  </div>
+
+                  <div className="inspection-note">
+                    This event is being inspected directly from the
+                    AgentVault blockchain activity stream.
+                  </div>
+                </div>
+              ) : (
+                <div className="inspection-idle">
+                  <div className="inspection-idle-icon">
+                    ◇
+                  </div>
+
+                  <strong>
+                    No event selected
+                  </strong>
+
+                  <span>
+                    Select a transaction to activate deep inspection.
+                  </span>
+                </div>
+              )}
+            </aside>
+          </div>
+        </section>
+
+        {/* =====================================================
+            HUMAN OVERSIGHT
+           ===================================================== */}
+
+        <section className="oversight-section">
+          <div className="section-intro">
+            <div>
+              <p className="eyebrow">HUMAN OVERSIGHT</p>
+
+              <h2>
+                Where the human
+                <span className="heading-accent"> steps in.</span>
+              </h2>
+            </div>
+
+            <div className="decision-heading-meta">
+              <span className="live-beacon amber" />
+              OWNER AUTHORITY
+            </div>
+          </div>
+
+          <div className="oversight-grid">
+            <div>
+              <div className="module-label">
+                <span>01</span>
+                PENDING AUTHORITY
+              </div>
+
+              <PendingPayments />
+            </div>
+
+            <div>
+              <div className="module-label">
+                <span>02</span>
+                APPROVED RECIPIENTS
+              </div>
+
+              <AllowedRecipients />
+            </div>
+          </div>
+        </section>
+
+        {/* =====================================================
+            POLICY CONFIGURATION
+           ===================================================== */}
+
+        <section className="policy-section">
+          <div className="section-intro">
+            <div>
+              <p className="eyebrow">PROGRAMMABLE SECURITY</p>
+
+              <h2>
+                Define the boundaries.
+              </h2>
+            </div>
+
+            <div className="policy-heading-copy">
+              Spending rules are enforced by the vault contract.
+            </div>
+          </div>
+
+          <div className="policy-layout">
+            <div>
+              <div className="module-label">
+                <span>RULES</span>
+                SPENDING POLICY
+              </div>
+
+              <VaultRules />
+            </div>
+
+            <div>
+              <div className="module-label">
+                <span>CONTROL</span>
+                OWNER ACTIONS
+              </div>
+
+              <VaultControls />
+            </div>
+          </div>
+        </section>
+
+        {/* =====================================================
+            CRYPTOGRAPHIC AUDIT
+           ===================================================== */}
+
+        <section className="audit-section">
+          <div className="section-intro">
+            <div>
+              <p className="eyebrow">CRYPTOGRAPHIC AUDIT TRAIL</p>
+
+              <h2>
+                Prove what happened.
+              </h2>
+            </div>
+
+            <div className="decision-heading-meta">
+              <span className="live-beacon cyan" />
+              VERIFIABLE
+            </div>
+          </div>
+
+          <ReceiptVerification
+            transactionHash={
+              selectedTransaction?.transactionHash ?? ""
+            }
+            receiptHash={
+              selectedTransaction?.receiptHash ?? ""
+            }
+          />
+        </section>
+
+        {/* =====================================================
+            FOOTER
+           ===================================================== */}
+
+        <footer className="dashboard-footer command-footer">
+          <div className="footer-brand">
+            <span className="footer-dot" />
+            AGENTVAULT
+          </div>
+
+          <div>
+            Rule-bound wallets for autonomous AI agents.
+          </div>
+
+          <div>
+            MST TESTNET · BUILDATHON
+          </div>
+        </footer>
       </main>
     </div>
   );

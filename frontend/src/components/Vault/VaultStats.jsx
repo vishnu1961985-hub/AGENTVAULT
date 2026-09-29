@@ -78,27 +78,79 @@ export default function VaultStats() {
     }
 
     loadVaultStats();
+
+    const interval = setInterval(loadVaultStats, 15000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const statsList = [
-    ["Vault Balance", stats.balance],
-    ["Daily Limit", stats.dailyLimit],
-    ["Today's Spending", stats.todaySpending],
-    ["Per-Transaction Maximum", stats.perTransactionMax],
-    ["Approval Threshold", stats.approvalThreshold],
-    ["Trust Tier", stats.trustTier],
+    {
+      label: "Vault Balance",
+      value: stats.balance,
+      icon: "◈",
+      accent: "cyan",
+    },
+    {
+      label: "Daily Limit",
+      value: stats.dailyLimit,
+      icon: "⌁",
+      accent: "purple",
+    },
+    {
+      label: "Today's Spending",
+      value: stats.todaySpending,
+      icon: "↗",
+      accent: "green",
+    },
+    {
+      label: "Per-Tx Maximum",
+      value: stats.perTransactionMax,
+      icon: "◆",
+      accent: "amber",
+    },
+    {
+      label: "Approval Threshold",
+      value: stats.approvalThreshold,
+      icon: "!",
+      accent: "red",
+    },
+    {
+      label: "Trust Tier",
+      value: stats.trustTier,
+      icon: "◇",
+      accent: "cyan",
+    },
   ];
 
   return (
-    <section className="stats-grid">
-      {statsList.map(([label, value]) => (
-        <article className="stat-card" key={label}>
-          <span>{label}</span>
-          <strong>{value}</strong>
+    <section className="telemetry-grid">
+      {statsList.map((stat) => (
+        <article
+          className={`telemetry-card ${stat.accent}`}
+          key={stat.label}
+        >
+          <div className="telemetry-card-top">
+            <span>{stat.label}</span>
+
+            <div className="telemetry-icon">
+              {stat.icon}
+            </div>
+          </div>
+
+          <strong>{stat.value}</strong>
+
+          <div className="telemetry-line">
+            <span />
+          </div>
         </article>
       ))}
 
-      {error && <p className="demo-warning">{error}</p>}
+      {error && (
+        <p className="demo-warning">
+          {error}
+        </p>
+      )}
     </section>
   );
 }
