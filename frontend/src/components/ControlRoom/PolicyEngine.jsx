@@ -23,15 +23,19 @@ export default function PolicyEngine({ selectedTransaction, onPaymentResult }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
-  const valid = useMemo(() => isAddress(recipient) && Number(amount) > 0, [recipient, amount]);
+  const valid = useMemo(() => {
+    if (!isAddress(recipient)) return false;
+    if (!/^\\d+(\\.\\d{1,18})?$/.test(amount.trim())) return false;
+    try { return ethers.parseEther(amount.trim()) > 0n; } catch { return false; }
+  }, [recipient, amount]);
 
   async function execute() {
     setError(""); setResult(null);
     if (!isAddress(recipient)) return setError("Enter a valid EVM recipient address.");
-    if (!amount || Number(amount) <= 0) return setError("Enter an amount greater than zero.");
+    if (!/^\\d+(\\.\\d{1,18})?$/.test(amount.trim())) return setError("Enter a valid MSTC amount with up to 18 decimals.");
     try {
       setBusy(true);
-      const baseUnits = ethers.parseEther(amount).toString();
+      const baseUnits = ethers.parseEther(amount.trim()).toString();
       const receiptData = buildReceiptData({ recipient, amount: baseUnits });
       const response = await requestPayment({ recipient, amount: baseUnits, receiptData });
       setResult(response);
