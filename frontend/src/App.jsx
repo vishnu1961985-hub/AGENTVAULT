@@ -14,6 +14,8 @@ import PolicyEngine from "./components/ControlRoom/PolicyEngine";
 
 function App() {
   const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [wallet, setWallet] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const selectTransaction = (transaction) => {
     setSelectedTransaction(transaction);
@@ -57,7 +59,7 @@ function App() {
             POLICY ENGINE
           </div>
 
-          <WalletConnect />
+          <WalletConnect onWalletChange={setWallet} />
         </div>
       </header>
 
@@ -206,6 +208,7 @@ function App() {
 
           <PolicyEngine
             selectedTransaction={selectedTransaction}
+            onPaymentResult={() => setRefreshKey((value) => value + 1)}
           />
         </section>
 
@@ -233,6 +236,7 @@ function App() {
           <div className="activity-command-layout">
             <div className="activity-feed-shell">
               <TransactionFeed
+                key={refreshKey}
                 onSelectTransaction={selectTransaction}
               />
             </div>
@@ -387,7 +391,7 @@ function App() {
                 OWNER ACTIONS
               </div>
 
-              <VaultControls />
+              <VaultControls wallet={wallet} />
             </div>
           </div>
         </section>
@@ -413,12 +417,9 @@ function App() {
           </div>
 
           <ReceiptVerification
-            transactionHash={
-              selectedTransaction?.transactionHash ?? ""
-            }
-            receiptHash={
-              selectedTransaction?.receiptHash ?? ""
-            }
+            transaction={selectedTransaction}
+            transactionHash={selectedTransaction?.transactionHash ?? ""}
+            receiptHash={selectedTransaction?.receiptHash ?? ""}
           />
         </section>
 
