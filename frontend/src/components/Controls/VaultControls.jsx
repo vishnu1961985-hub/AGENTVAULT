@@ -219,7 +219,8 @@ export default function VaultControls({ wallet }) {
             }
             disabled={
               loading ||
-              paused === true
+              paused === true ||
+              !ownerConnected
             }
           >
             <span>PAUSE VAULT</span>
@@ -237,7 +238,8 @@ export default function VaultControls({ wallet }) {
             }
             disabled={
               loading ||
-              paused === false
+              paused === false ||
+              !ownerConnected
             }
           >
             <span>RESUME VAULT</span>
