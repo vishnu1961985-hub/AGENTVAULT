@@ -51,9 +51,10 @@ export async function requestPayment({
   );
 
   if (!response.ok) {
-    throw new Error(
-      `Payment service request failed (${response.status})`
-    );
+    const text = await response.text();
+    let body = {};
+    try { body = text ? JSON.parse(text) : {}; } catch {}
+    throw new Error(body.error || `Payment service request failed (${response.status})`);
   }
 
   const result = await response.json();
