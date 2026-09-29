@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { keccak256, toUtf8Bytes } from "ethers";
 import { createServer } from "node:http";
 import type {
   IncomingMessage,
@@ -68,6 +69,96 @@ const server = createServer(
           status: "READY",
           agent,
           vault: vaultAddress,
+        });
+
+        return;
+      }
+
+      /*
+       * Read-only payment dry run.
+       *
+       * This validates the payment intent and computes the
+       * exact receipt hash that would be submitted to AgentVault.
+       *
+       * IMPORTANT:
+       * This endpoint does NOT submit a blockchain transaction
+       * and does NOT attempt to reproduce AgentVault policy logic.
+       */
+      if (
+        request.method === "POST" &&
+        request.url === "/api/payments/dry-run"
+      ) {
+        const rawBody = await readBody(request);
+
+        let body: {
+          recipient?: unknown;
+          amount?: unknown;
+          receiptData?: unknown;
+        };
+
+        try {
+          body = JSON.parse(rawBody);
+        } catch {
+          sendJson(response, 400, {
+            error: "Request body must be valid JSON",
+          });
+          return;
+        }
+
+        if (
+          typeof body.recipient !== "string" ||
+          typeof body.amount !== "string" ||
+          typeof body.receiptData !== "string"
+        ) {
+          sendJson(response, 400, {
+            error:
+              "recipient, amount, and receiptData are required strings",
+          });
+          return;
+        }
+
+        if (
+          !/^0x[a-fA-F0-9]{40}$/.test(body.recipient)
+        ) {
+          sendJson(response, 400, {
+            error: "recipient must be a valid EVM address",
+          });
+          return;
+        }
+
+        if (
+          !/^\d+$/.test(body.amount) ||
+          body.amount === "0"
+        ) {
+          sendJson(response, 400, {
+            error:
+              "amount must be a positive integer string in MST base units",
+          });
+          return;
+        }
+
+        if (body.receiptData.length === 0) {
+          sendJson(response, 400, {
+            error: "receiptData is required",
+          });
+          return;
+        }
+
+        const receiptHash = keccak256(
+          toUtf8Bytes(body.receiptData),
+        );
+
+        const agent =
+          await agentService.getAgentAddress();
+
+        sendJson(response, 200, {
+          mode: "DRY_RUN",
+          wouldSubmit: true,
+          agent,
+          vault: vaultAddress,
+          recipient: body.recipient,
+          amount: body.amount,
+          receiptHash,
         });
 
         return;
