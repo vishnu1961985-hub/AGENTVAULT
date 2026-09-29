@@ -5,8 +5,10 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx agent/src/index.ts",
+    "dev:service": "tsx agent/src/api/server.ts",
     "build": "tsc",
-    "start": "node dist/agent/src/index.js"
+    "start": "node dist/agent/src/index.js",
+    "start:service": "node dist/agent/src/api/server.js"
   },
   "repository": {
     "type": "git",
