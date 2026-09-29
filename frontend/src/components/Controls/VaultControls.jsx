@@ -14,6 +14,7 @@ export default function VaultControls({ wallet }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [fundAmount, setFundAmount] = useState("");
 
   async function loadVaultState() {
     try {
@@ -103,6 +104,31 @@ export default function VaultControls({ wallet }) {
     }
 
     return provider;
+  }
+
+  async function fundVault() {
+    try {
+      setLoading(true);
+      setError("");
+      setMessage("");
+      const provider = await connectAndCheckOwner();
+      const signer = await provider.getSigner();
+      if (!/^\\d+(\\.\\d{1,18})?$/.test(fundAmount.trim()) || ethers.parseEther(fundAmount.trim()) <= 0n) {
+        throw new Error("Enter a positive MST amount with up to 18 decimals.");
+      }
+      const tx = await signer.sendTransaction({
+        to: AGENT_VAULT_ADDRESS,
+        value: ethers.parseEther(fundAmount.trim()),
+      });
+      setMessage("Vault funding transaction submitted. Waiting for confirmation...");
+      await tx.wait();
+      setFundAmount("");
+      setMessage("Vault funded successfully.");
+    } catch (err) {
+      setError(err?.shortMessage || err?.reason || err?.message || "Vault funding failed.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function changePauseState(shouldPause) {
@@ -250,6 +276,29 @@ export default function VaultControls({ wallet }) {
             </small>
           </button>
 
+        </div>
+
+        <div className="authority-funding">
+          <div>
+            <span>FUND VAULT</span>
+            <small>Send native MSTC directly to the vault address for real payment testing.</small>
+          </div>
+          <div className="authority-funding-action">
+            <input
+              value={fundAmount}
+              onChange={(event) => setFundAmount(event.target.value)}
+              placeholder="0.50"
+              inputMode="decimal"
+            />
+            <span>MSTC</span>
+            <button
+              type="button"
+              onClick={fundVault}
+              disabled={loading || !ownerConnected || !fundAmount.trim()}
+            >
+              {loading ? "PROCESSING..." : "FUND VAULT"}
+            </button>
+          </div>
         </div>
 
         <div className="authority-footer">
