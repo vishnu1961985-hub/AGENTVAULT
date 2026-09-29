@@ -8,7 +8,7 @@ function getReadOnlyContract() {
 function shortAddress(address) { return address ? `${address.slice(0, 8)}...${address.slice(-6)}` : "—"; }
 function errorText(error, fallback) { return error?.shortMessage || error?.reason || error?.message || fallback; }
 
-export default function AllowedRecipients() {
+export default function AllowedRecipients({ wallet }) {
   const [recipient, setRecipient] = useState("");
   const [approved, setApproved] = useState(null);
   const [cap, setCap] = useState("");
@@ -108,8 +108,8 @@ export default function AllowedRecipients() {
           <div className="recipient-command-card">
             <span className="command-number">01</span><div><h3>Authorization</h3><p>Decide whether the agent may send payments to this recipient.</p></div>
             <div className="command-actions">
-              <button className="approve-recipient" disabled={saving || !recipient.trim()} onClick={() => setApproval(true)}>AUTHORIZE</button>
-              <button className="remove-recipient" disabled={saving || !recipient.trim()} onClick={() => setApproval(false)}>RESTRICT</button>
+              <button className="approve-recipient" disabled={saving || !recipient.trim() || !wallet?.isOwner || !wallet?.isCorrectNetwork} onClick={() => setApproval(true)}>AUTHORIZE</button>
+              <button className="remove-recipient" disabled={saving || !recipient.trim() || !wallet?.isOwner || !wallet?.isCorrectNetwork} onClick={() => setApproval(false)}>RESTRICT</button>
             </div>
           </div>
           <div className="recipient-command-card">
@@ -117,7 +117,7 @@ export default function AllowedRecipients() {
             <div className="cap-editor">
               <input type="number" min="0" step="any" value={cap} onChange={(event) => setCap(event.target.value)} placeholder="0" />
               <span>MST</span>
-              <button disabled={saving || !recipient.trim() || !cap.trim()} onClick={saveRecipientCap}>SAVE CAP</button>
+              <button disabled={saving || !recipient.trim() || !cap.trim() || !wallet?.isOwner || !wallet?.isCorrectNetwork} onClick={saveRecipientCap}>SAVE CAP</button>
             </div>
           </div>
         </div>
