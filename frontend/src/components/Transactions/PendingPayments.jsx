@@ -43,7 +43,7 @@ function formatAmount(amount) {
   }
 }
 
-export default function PendingPayments() {
+export default function PendingPayments({ wallet }) {
   const [pendingPayments, setPendingPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
@@ -451,9 +451,7 @@ export default function PendingPayments() {
                 <div className="approval-actions">
                   <button
                     className="approval-reject"
-                    disabled={
-                      processingId !== null
-                    }
+                    disabled={processingId !== null || !wallet?.isOwner || !wallet?.isCorrectNetwork}
                     onClick={() =>
                       rejectPayment(
                         payment.id
