@@ -1,4 +1,4 @@
-import { Interface } from "ethers";
+import { Contract, Interface, isAddress } from "ethers";
 import { readFileSync } from "node:fs";
 
 import {
@@ -43,6 +43,15 @@ export class AgentVaultClient {
     return await this.signer.getAddress();
   }
 
+  async getVaultOwner(): Promise<string> {
+    const vault = new Contract(
+      this.vaultAddress,
+      abi,
+      this.signer,
+    );
+    return await vault.owner();
+  }
+
   encodePay(
     recipient: string,
     amount: bigint,
@@ -60,6 +69,7 @@ export class AgentVaultClient {
     amount: bigint,
     receiptHash: string,
   ): Promise<string> {
+    if (!isAddress(recipient)) throw new Error("Invalid recipient address");
     const data = this.encodePay(
       recipient,
       amount,
