@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ethers } from "ethers";
 import "./App.css";
 
 import WalletConnect from "./components/Wallet/WalletConnect";
@@ -11,11 +12,31 @@ import TransactionFeed from "./components/Transactions/TransactionFeed";
 import PendingPayments from "./components/Transactions/PendingPayments";
 import ReceiptVerification from "./components/Receipts/ReceiptVerification";
 import PolicyEngine from "./components/ControlRoom/PolicyEngine";
+import { AGENT_VAULT_ABI, AGENT_VAULT_ADDRESS, MST_TESTNET_RPC } from "./contracts/agentVault";
+import { getPaymentServiceHealth } from "./services/paymentService";
 
 function App() {
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [system, setSystem] = useState({ active:null, paused:null, service:null });
+
+  useEffect(() => {
+    let alive = true;
+    async function loadSystem() {
+      try {
+        const provider = new ethers.JsonRpcProvider(MST_TESTNET_RPC);
+        const vault = new ethers.Contract(AGENT_VAULT_ADDRESS, AGENT_VAULT_ABI, provider);
+        const [active, paused] = await Promise.all([vault.isActive(), vault.paused()]);
+        let service = null;
+        try { service = await getPaymentServiceHealth(); } catch {}
+        if (alive) setSystem({ active, paused, service });
+      } catch (error) { console.error("System telemetry failed:", error); }
+    }
+    loadSystem();
+    const id = setInterval(loadSystem, 15000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
 
   const selectTransaction = (transaction) => {
     setSelectedTransaction(transaction);
@@ -94,7 +115,7 @@ function App() {
 
                 <div>
                   <small>VAULT STATUS</small>
-                  <strong>ACTIVE</strong>
+                  <strong>{system.active === null ? "READING" : system.active ? "ACTIVE" : "INACTIVE"}</strong>
                 </div>
               </div>
 
@@ -145,7 +166,7 @@ function App() {
         <section className="system-strip command-strip">
           <div>
             <span className="strip-dot green" />
-            CONTRACT ONLINE
+            {system.active === null ? "CONTRACT READING" : system.active ? "CONTRACT ONLINE" : "CONTRACT INACTIVE"}
           </div>
 
           <div>
@@ -155,7 +176,7 @@ function App() {
 
           <div>
             <span className="strip-dot purple" />
-            RULE ENGINE ACTIVE
+            {system.paused ? "VAULT PAUSED" : "RULE ENGINE ACTIVE"}
           </div>
 
           <div>
