@@ -62,8 +62,7 @@ const server = createServer(
         request.method === "GET" &&
         request.url === "/api/health"
       ) {
-        const agent =
-          await agentService.getAgentAddress();
+        const agent = await agentService.getAgentAddress();
 
         sendJson(response, 200, {
           status: "READY",
