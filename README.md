@@ -1,57 +1,94 @@
-# Sample Hardhat 3 Project (`mocha` and `ethers`)
+# AgentVault
 
-This project showcases a Hardhat 3 project using `mocha` for tests and the `ethers` library for Ethereum interactions.
+AgentVault is a rule-bound native-payment vault for an autonomous AI agent on MST Testnet. The agent can request payments, but the AgentVault contract enforces the spending policy and records Allowed, Blocked, and Pending decisions on-chain.
 
-To learn more about Hardhat 3, please visit the [Getting Started guide](https://hardhat.org/docs/getting-started#getting-started-with-hardhat-3). To share your feedback, join our [Hardhat 3](https://hardhat.org/hardhat3-telegram-group) Telegram group or [open an issue](https://github.com/NomicFoundation/hardhat/issues/new) in our GitHub issue tracker.
+## Live demo configuration
 
-## Project Overview
+The dashboard is wired to the live-demo vault:
 
-This example project includes:
+- MST Testnet RPC: `https://testnetrpc.mstblockchain.com`
+- Chain ID: `91562037`
+- AgentVault: `0x746392d55268c859cBf16bcc8b7902615D2be8b1`
+- MockMerchant: `0xD141f9dB830C3733F62aB09dECB41EA893B6418F`
 
-- A simple Hardhat configuration file.
-- Foundry-compatible Solidity unit tests.
-- TypeScript integration tests using `mocha` and ethers.js
-- Examples demonstrating how to connect to different types of networks, including locally simulating OP mainnet.
+The repository's `scripts/setup-live-demo.ts` is the source for the demo configuration. It sets the owner-defined daily limit to 5 MSTC, per-transaction maximum to 1 MSTC, allowlists MockMerchant, and funds the vault up to 5 MSTC. The separate `scripts/set-tier0-daily-limit.ts` configures Tier 0 to 5 MSTC.
 
-## Usage
+## Architecture
 
-### Running Tests
+- `contracts/AgentVault.sol` — on-chain policy enforcement and payment state.
+- `contracts/AgentVaultFactory.sol` — vault creation.
+- `agent/` — Agent Service HTTP API and MST transaction client.
+- `simulation/` — local receipt/payment-intent simulation and tests.
+- `frontend/` — live React dashboard connected to AgentVault and the Agent Service.
 
-To run all the tests in the project, execute the following command:
+Payment flow:
 
-```shell
+`Dashboard → Agent Service → AgentVault.pay() → Allowed / Blocked / Pending → blockchain event → dashboard activity`
+
+The browser wallet is the human owner/control wallet. The agent service signs payment requests with the configured agent key. The agent key must correspond to the `agent()` address stored in the vault.
+
+## Run the dashboard
+
+From `frontend/`:
+
+```powershell
+npm install
+npm run dev
+```
+
+The Vite development server proxies `/api/*` to the Agent Service at `http://localhost:3000`.
+
+## Run the Agent Service
+
+Create `agent/.env` locally. Never commit the real private key.
+
+```text
+MST_RPC_URL=https://testnetrpc.mstblockchain.com
+AGENT_PRIVATE_KEY=<your agent signing key>
+AGENTVAULT_ADDRESS=0x746392d55268c859cBf16bcc8b7902615D2be8b1
+AGENT_SERVICE_PORT=3000
+```
+
+Then from the repository root:
+
+```powershell
+npm install
+npm run dev:service
+```
+
+Health check:
+
+```text
+GET http://localhost:3000/api/health
+```
+
+## Contract controls
+
+Owner-only dashboard actions write directly to the vault:
+
+- pause / resume
+- daily limit
+- per-transaction maximum
+- approval threshold
+- trust-tier limits and progression
+- recipient allowlist
+- per-recipient cap
+- pending payment approval / rejection
+
+Payment requests never bypass the contract. A blocked request is recorded as a blocked decision rather than being treated as a successful payment.
+
+## Tests
+
+```powershell
 npx hardhat test
 ```
 
-You can also selectively run the Solidity or `mocha` tests:
+The simulation tests can be run with:
 
-```shell
-npx hardhat test solidity
-npx hardhat test mocha
+```powershell
+python -m unittest tests/test_payment_intent.py -v
 ```
 
-### Make a deployment to Sepolia
+## Important
 
-This project includes an example Ignition module to deploy the contract. You can deploy this module to a locally simulated chain or to Sepolia.
-
-To run the deployment to a local chain:
-
-```shell
-npx hardhat ignition deploy ignition/modules/Counter.ts
-```
-
-To run the deployment to Sepolia, you need an account with funds to send the transaction. The provided Hardhat configuration includes a Configuration Variable called `SEPOLIA_PRIVATE_KEY`, which you can use to set the private key of the account you want to use.
-
-You can set the `SEPOLIA_PRIVATE_KEY` variable using the `hardhat-keystore` plugin or by setting it as an environment variable.
-
-To set the `SEPOLIA_PRIVATE_KEY` config variable using `hardhat-keystore`:
-
-```shell
-npx hardhat keystore set SEPOLIA_PRIVATE_KEY
-```
-
-After setting the variable, you can run the deployment with the Sepolia network:
-
-```shell
-npx hardhat ignition deploy --network sepolia ignition/modules/Counter.ts
-```
+Do not put private keys in source files, screenshots, chat messages, or Git history. If a signing key has previously been exposed, replace it before using the project for a real transaction.
