@@ -1,278 +1,98 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ethers } from "ethers";
+import { requestPayment } from "../../services/paymentService";
 
-const STATUS_CONFIG = {
-  Allowed: {
-    className: "allowed",
-    label: "PAYMENT ALLOWED",
-    icon: "✓",
-    description:
-      "The payment was accepted by the AgentVault policy flow and recorded on-chain.",
-  },
-  Blocked: {
-    className: "blocked",
-    label: "PAYMENT BLOCKED",
-    icon: "×",
-    description:
-      "The payment was rejected by the AgentVault policy flow.",
-  },
-  Pending: {
-    className: "pending",
-    label: "APPROVAL REQUIRED",
-    icon: "!",
-    description:
-      "The payment is waiting for owner approval before execution.",
-  },
-  READY: {
-    className: "ready",
-    label: "AWAITING REQUEST",
-    icon: "◇",
-    description:
-      "Select a payment from the activity stream to inspect its decision.",
-  },
-};
+function isAddress(value) {
+  return /^0x[0-9a-fA-F]{40}$/.test(value);
+}
 
-function formatAmount(amount) {
-  try {
-    return `${ethers.formatEther(amount)} MST`;
-  } catch {
-    return `${amount ?? "0"} MST`;
+function buildReceiptData({ recipient, amount }) {
+  return JSON.stringify({
+    version: 1,
+    action: "submit_payment",
+    timestamp: new Date().toISOString(),
+    source: "AgentVault dashboard",
+    payment_details: { recipient, amount: String(amount) }
+  });
+}
+
+export default function PolicyEngine({ selectedTransaction, onPaymentResult }) {
+  const [recipient, setRecipient] = useState("");
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+
+  const valid = useMemo(() => isAddress(recipient) && Number(amount) > 0, [recipient, amount]);
+
+  async function execute() {
+    setError(""); setResult(null);
+    if (!isAddress(recipient)) return setError("Enter a valid EVM recipient address.");
+    if (!amount || Number(amount) <= 0) return setError("Enter an amount greater than zero.");
+    try {
+      setBusy(true);
+      const baseUnits = ethers.parseEther(amount).toString();
+      const receiptData = buildReceiptData({ recipient, amount: baseUnits });
+      const response = await requestPayment({ recipient, amount: baseUnits, receiptData });
+      setResult(response);
+      onPaymentResult?.(response);
+    } catch (err) {
+      setError(err?.message || "Payment request failed.");
+    } finally {
+      setBusy(false);
+    }
   }
-}
-
-function shortenAddress(address) {
-  if (!address) return "—";
-  return `${address.slice(0, 8)}...${address.slice(-6)}`;
-}
-
-function shortenHash(hash) {
-  if (!hash) return "—";
-  return `${hash.slice(0, 10)}...${hash.slice(-8)}`;
-}
-
-function EngineStep({ number, title, description, active, complete }) {
-  return (
-    <div className={`engine-step ${active ? "active" : ""}`}>
-      <div className={`engine-step-marker ${complete ? "complete" : ""}`}>
-        {complete ? "✓" : number}
-      </div>
-
-      <div className="engine-step-copy">
-        <span>{title}</span>
-        <small>{description}</small>
-      </div>
-    </div>
-  );
-}
-
-export default function PolicyEngine({ selectedTransaction }) {
-  const [pulse, setPulse] = useState(false);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setPulse((value) => !value);
-    }, 2200);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  const status = selectedTransaction?.status || "READY";
-
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.READY;
-
-  const selectedAmount = useMemo(() => {
-    if (!selectedTransaction) return "0 MST";
-    return formatAmount(selectedTransaction.amount);
-  }, [selectedTransaction]);
 
   return (
-    <section className={`policy-engine-console ${config.className}`}>
-      <div className="policy-engine-topline">
-        <div className="policy-engine-title">
-          <div className="engine-command-icon">
-            <span />
-            <span />
-            <span />
-          </div>
+    <section className="policy-engine-live">
+      <div className="policy-engine-top">
+        <div>
+          <div className="engine-kicker"><span className="live-beacon" /> LIVE DECISION CONSOLE</div>
+          <h3>Submit an agent payment request</h3>
+          <p>The request is sent to the Agent Service. AgentVault remains the final policy authority.</p>
+        </div>
+        <div className="engine-badge">ON-CHAIN ENFORCED</div>
+      </div>
 
-          <div>
-            <p className="eyebrow">AUTONOMOUS SECURITY LAYER</p>
-            <h2>Agent Decision Engine</h2>
-          </div>
+      <div className="payment-console-grid">
+        <div className="payment-form">
+          <label>RECIPIENT</label>
+          <input value={recipient} onChange={(e) => setRecipient(e.target.value.trim())} placeholder="0x…" spellCheck="false" />
+          <label>AMOUNT · MSTC</label>
+          <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.10" inputMode="decimal" />
+          <button className="primary-button payment-submit" type="button" onClick={execute} disabled={busy || !valid}>
+            {busy ? "WAITING FOR BLOCKCHAIN…" : "REQUEST PAYMENT →"}
+          </button>
+          {error && <div className="console-error">{error}</div>}
         </div>
 
-        <div className={`engine-online ${pulse ? "pulse" : ""}`}>
-          <span />
-          ENGINE ONLINE
+        <div className="decision-preview">
+          <div className="decision-preview-title">POLICY PATH</div>
+          {["Authorized agent","Vault active","Recipient allowlist","Per-transaction max","Daily remaining limit","Recipient cap","Approval threshold"].map((item, i) => (
+            <div className="decision-step" key={item}><span>{String(i + 1).padStart(2, "0")}</span><strong>{item}</strong><em>CONTRACT</em></div>
+          ))}
         </div>
       </div>
 
-      <div className="policy-engine-subtitle">
-        <p>
-          Every payment request is evaluated against the vault&apos;s
-          on-chain spending policy before funds move.
-        </p>
-
-        <div className="engine-mode">
-          <span className="engine-mode-dot" />
-          MST TESTNET
-        </div>
-      </div>
-
-      <div className="engine-main-grid">
-        <div className="engine-request-card">
-          <div className="engine-card-label">
-            <span>01</span>
-            SELECTED REQUEST
+      {result && (
+        <div className={`payment-result ${result.status?.toLowerCase() || "unknown"}`}>
+          <div className="payment-result-main">
+            <span className="result-dot" />
+            <div><small>AGENTVAULT DECISION</small><strong>{result.status}</strong></div>
           </div>
-
-          {selectedTransaction ? (
-            <>
-              <div className="request-identity">
-                <div className="request-orb">
-                  <span>AI</span>
-                </div>
-
-                <div>
-                  <span className="request-caption">AGENT PAYMENT</span>
-                  <strong>Payment #{selectedTransaction.id}</strong>
-                </div>
-              </div>
-
-              <div className="request-amount">
-                <span>REQUESTED VALUE</span>
-                <strong>{selectedAmount}</strong>
-              </div>
-
-              <div className="request-target">
-                <span>RECIPIENT</span>
-                <code>{shortenAddress(selectedTransaction.recipient)}</code>
-              </div>
-            </>
-          ) : (
-            <div className="request-empty">
-              <div className="request-empty-orb">◇</div>
-
-              <strong>Awaiting agent activity</strong>
-
-              <span>
-                Select a payment from the live transaction stream to inspect
-                it here.
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="engine-flow-card">
-          <div className="engine-card-label">
-            <span>02</span>
-            POLICY PIPELINE
-          </div>
-
-          <div className="engine-flow">
-            <EngineStep
-              number="01"
-              title="AGENT REQUEST"
-              description="Payment intent received"
-              active={Boolean(selectedTransaction)}
-              complete={Boolean(selectedTransaction)}
-            />
-
-            <div className="engine-flow-line" />
-
-            <EngineStep
-              number="02"
-              title="POLICY ENGINE"
-              description="Vault rules evaluated"
-              active={Boolean(selectedTransaction)}
-              complete={Boolean(selectedTransaction)}
-            />
-
-            <div className="engine-flow-line" />
-
-            <EngineStep
-              number="03"
-              title="DECISION"
-              description="On-chain result"
-              active={Boolean(selectedTransaction)}
-              complete={Boolean(selectedTransaction)}
-            />
+          <div className="payment-result-grid">
+            <div><span>AMOUNT</span><strong>{ethers.formatEther(result.amount || "0")} MSTC</strong></div>
+            <div><span>RECIPIENT</span><code>{result.recipient}</code></div>
+            <div><span>REASON CODE</span><strong>{result.reason}</strong></div>
+            <div><span>BLOCK</span><strong>{result.blockNumber ?? "pending"}</strong></div>
+            <div className="wide"><span>TX HASH</span><code>{result.txHash}</code></div>
           </div>
         </div>
-      </div>
-
-      <div className={`engine-decision-panel ${config.className}`}>
-        <div className="decision-visual">
-          <div className="decision-ring ring-a" />
-          <div className="decision-ring ring-b" />
-
-          <div className="decision-core">
-            <span>{config.icon}</span>
-          </div>
-        </div>
-
-        <div className="decision-copy">
-          <span className="decision-overline">
-            {selectedTransaction
-              ? "ON-CHAIN DECISION"
-              : "CURRENT ENGINE STATE"}
-          </span>
-
-          <h3>{config.label}</h3>
-
-          <p>{config.description}</p>
-        </div>
-
-        <div className="decision-meta">
-          {selectedTransaction ? (
-            <>
-              <div>
-                <span>PAYMENT</span>
-                <strong>#{selectedTransaction.id}</strong>
-              </div>
-
-              <div>
-                <span>BLOCK</span>
-                <strong>{selectedTransaction.blockNumber}</strong>
-              </div>
-            </>
-          ) : (
-            <div>
-              <span>STATUS</span>
-              <strong>READY</strong>
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {selectedTransaction && (
-        <div className="engine-audit-grid">
-          <div className="audit-item">
-            <span className="audit-icon">✓</span>
-
-            <div>
-              <span>BLOCKCHAIN RECORD</span>
-              <strong>Event detected</strong>
-            </div>
-          </div>
-
-          <div className="audit-item">
-            <span className="audit-icon">#</span>
-
-            <div>
-              <span>TRANSACTION HASH</span>
-              <strong>{shortenHash(selectedTransaction.transactionHash)}</strong>
-            </div>
-          </div>
-
-          <div className="audit-item">
-            <span className="audit-icon">◆</span>
-
-            <div>
-              <span>RECEIPT HASH</span>
-              <strong>{shortenHash(selectedTransaction.receiptHash)}</strong>
-            </div>
-          </div>
+        <div className="selected-decision">
+          Inspecting event <strong>#{selectedTransaction.id}</strong> · {selectedTransaction.status} · block {selectedTransaction.blockNumber}
         </div>
       )}
     </section>
