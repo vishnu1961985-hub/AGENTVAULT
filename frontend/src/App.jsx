@@ -176,12 +176,12 @@ function App() {
 
           <div>
             <span className="strip-dot purple" />
-            {system.paused ? "VAULT PAUSED" : "RULE ENGINE ACTIVE"}
+            {system.paused === null ? "POLICY READING" : system.paused ? "VAULT PAUSED" : "RULE ENGINE ACTIVE"}
           </div>
 
           <div>
             <span className="strip-dot amber" />
-            OWNER CONTROLS ENABLED
+            {wallet?.isOwner && wallet?.isCorrectNetwork ? "OWNER CONTROLS ENABLED" : "OWNER CONTROLS LOCKED"}
           </div>
         </section>
 
